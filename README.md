@@ -1,5 +1,45 @@
 # migpt-claw
 
+## OpenClaw 2026.5.4 适配状态（violin321 fork）
+
+> 本 fork 已针对 **OpenClaw 2026.5.4** 做兼容适配，并完成一次受控本地验证。
+
+### 已包含的适配
+
+- OpenClaw 2026.5.4 plugin SDK 子路径 import 适配。
+- ChannelPlugin runtime / inbound / outbound / setup / status API 适配。
+- `openclaw.plugin.json#channelConfigs`，用于让 `channels.migpt` 通过 OpenClaw config schema 校验。
+- `activation.onStartup=true`，用于让 Gateway 进程级启动时加载 MiGPT channel。
+- 修复 `announceOnStart=false` 在 outbound 初始化时丢失、仍播启动语的问题。
+
+### 本地已验证
+
+- `npx tsc --noEmit` ✅
+- `npm run build` ✅
+- 静态 import `./dist/index.js` ✅
+- `node scripts/check-announce-on-start-merge.mjs` ✅
+- `npm pack` ✅
+- Gateway runtime 启动后包含 `migpt-claw` ✅
+- `openclaw channels status` 显示 `MiGPT default ... running, connected` ✅
+- OpenClaw → 小爱音箱文本播报 ✅
+- `announceOnStart=false` 不再额外播启动语 ✅
+
+### 尚未充分验证
+
+- 小爱语音 inbound → OpenClaw → 小爱回复的完整对话链路。
+- 外部 TTS 音频 URL 经小爱音箱播放。
+- 多设备同时启用与长期轮询稳定性。
+
+### 最近一次本地打包产物
+
+```text
+migpt-claw-1.0.0.tgz
+sha256: cdb6299a956879d244df5275aba3c1b6bb45d506aa9095cc7c957b7e3075d8ea
+```
+
+更多可追溯信息见：[`OPENCLAW_PATCHED_BUILD.md`](./OPENCLAW_PATCHED_BUILD.md)。
+
+
 小米小爱音箱 OpenClaw Channel 插件，让小爱音箱成为你的 🦞龙虾 语音助手。
 
 ## 功能特性
@@ -10,6 +50,21 @@
 - 🔔 **状态提示** - 支持启动播报和收到消息提示音
 
 ## 快速开始
+
+
+### 0. 从本 fork 构建并安装（OpenClaw 2026.5.4 推荐）
+
+```bash
+npm install
+npm run build
+node scripts/check-announce-on-start-merge.mjs
+npm pack
+openclaw plugins install ./migpt-claw-1.0.0.tgz --force
+openclaw config validate
+openclaw gateway restart
+```
+
+注意：安装或更新插件后，需要一次**进程级** `openclaw gateway restart` 才能让 Gateway runtime 加载新插件代码。
 
 ### 1. 安装插件
 
@@ -52,6 +107,13 @@ openclaw plugins install ./migpt-claw-1.0.0.tgz
 - `acknowledgeOnReceive`：收到消息时是否回复提示
 - `receiveMessage`：收到消息回复文案
 - `speakerControl`：音箱控制方式（`mina` 或 `miot`，默认 `mina`）
+
+**配置建议（受控测试）**：
+- 先只配置一个设备，确认稳定后再加多设备。
+- `devices` 必须使用米家 App 中显示的真实设备名，例如 `客厅`，不要使用自己临时想的昵称。
+- 建议先设置 `announceOnStart: false`，避免 Gateway/插件初始化时突然播报上线文案。
+- 建议先设置 `acknowledgeOnReceive: false`，避免 inbound 测试时多播提示语。
+
 
 ### 音箱控制方式说明
 
@@ -104,6 +166,60 @@ openclaw gateway restart
 1. 开启 `debug: true` 配置
 2. 启动服务查看设备列表
 3. 日志中会打印所有可用设备
+
+
+## 使用方式与边界
+
+### OpenClaw 主动播报到小爱
+
+已验证链路：OpenClaw → MiGPT channel → 小爱音箱播报。
+
+```bash
+openclaw message send \
+  --channel migpt \
+  --target "客厅" \
+  --message "OpenClaw 小爱播报测试"
+```
+
+如需只验证路由、不真实播报：
+
+```bash
+openclaw message send \
+  --channel migpt \
+  --target "客厅" \
+  --message "OpenClaw 小爱 dry run 测试" \
+  --dry-run
+```
+
+### 小爱语音对话 OpenClaw
+
+设计目标是继续使用小爱原生唤醒词，例如：
+
+> 小爱同学，帮我问 OpenClaw 今天有什么安排
+
+插件会轮询小爱对话记录，并把符合条件的新 query 转给 OpenClaw，再将 OpenClaw 回复播回音箱。
+
+当前此 inbound 链路尚未充分验证；建议先在单设备、短句、低风险场景下测试。
+
+### 智能家居控制
+
+本插件不会替换小爱系统，也不会主动接管米家智能家居控制。正常的：
+
+> 小爱同学，打开客厅灯
+
+仍应走小爱/米家原生链路。
+
+但插件会读取小爱对话历史；某些普通 query 是否也会被 OpenClaw 看到，取决于小爱历史 API 返回内容和当前过滤逻辑，需要按设备实际验证。
+
+### 播放外部 TTS 音频
+
+代码支持 `MiSpeaker.play({ url })`，理论上可以播放一个小爱可访问的音频 URL。
+
+尚未充分验证：
+- 支持哪些音频格式；
+- URL 是否必须公网可访问；
+- 局域网 HTTP URL 是否稳定；
+- 飞书 file_key 等私有资源不能直接作为小爱播放 URL。
 
 ## 使用技能
 
@@ -227,6 +343,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+## 安全提醒
+
+- 不要把小米账号密码、`passToken`、`serviceToken` 写入 GitHub 仓库。
+- 建议使用测试账号或非主账号做联调。
+- 如果凭证曾经出现在聊天、日志或截图中，建议尽快轮换。
+- `passToken` 是敏感凭证；本项目只应保存示例字段，不应提交真实值。
+- Gateway 配置文件和备份可能包含敏感字段，请注意权限与备份流向。
 
 ## 免责声明
 
