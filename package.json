@@ -13,13 +13,15 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "morning:brief:warm": "bash scripts/run-morning-brief-warm.sh",
+    "morning:brief:play": "node scripts/play-morning-brief-warm.mjs"
   },
   "files": [
     "dist",
     "src",
+    "scripts",
     "index.ts",
-    "skills",
     "openclaw.plugin.json",
     "tsconfig.json"
   ],

@@ -221,6 +221,128 @@ openclaw message send \
 - 局域网 HTTP URL 是否稳定；
 - 飞书 file_key 等私有资源不能直接作为小爱播放 URL。
 
+### 手动晨报：温柔拟人口吻 TTS → URL 播放到小爱（不接 cron）
+
+这个仓库现在包含一条**手动触发**链路，用于把晨报文本改写成温柔口播稿，经 MiMo TTS 生成 wav、转成 16k mono，再通过公网 HTTP URL 交给 MiNA `player_play_url` 播放到小爱音箱。
+
+> 说明：这是**手动工具链**，**不会自动接 cron**，也**不会改 OpenClaw 配置**。
+
+#### 新增脚本
+
+- `scripts/morning-brief-warm-tts.py`
+  - 读取晨报文本
+  - 调用 `https://api.xiaomimimo.com/v1/chat/completions`
+  - 使用 `mimo-v2-tts` + `mimo_default`
+  - 输出 raw wav + 16k mono wav + 改写后的口播文本
+- `scripts/play-morning-brief-warm.mjs`
+  - 读取 `~/.openclaw/openclaw.json` 中的 `channels.migpt`
+  - 仅打印 `hasPassword/hasPassToken`，不打印敏感值
+  - 在本地起一个单文件临时 HTTP 服务
+  - 调用 MiNA `player_play_url` 播放公网 URL
+- `scripts/run-morning-brief-warm.sh`
+  - 一条命令串起 TTS、转码、临时托管、播放
+
+#### 凭据读取规则
+
+**MiMo API key**：
+
+优先读取环境变量：
+- `XIAOMI_API_KEY`
+- `MIMO_API_KEY`
+
+否则回退读取：
+- `/root/.openclaw/workspace/.credentials/xiaomi-api.txt`
+
+**小爱 / MiNA 登录信息**：
+
+从 `~/.openclaw/openclaw.json` 的 `channels.migpt` 读取：
+- `userId`
+- `password`
+- `passToken`
+- `devices`
+- `speakerControl`
+
+日志不会打印密码或 token 正文。
+
+#### 依赖
+
+需要本机有：
+- `python3`
+- Python `requests`
+- `ffmpeg`
+- `node`
+- 已执行过 `npm install && npm run build`
+
+#### 最简手动命令
+
+```bash
+cd /root/.openclaw/workspace/repos/migpt-claw
+bash scripts/run-morning-brief-warm.sh /path/to/morning-brief.txt
+```
+
+如需指定音箱名：
+
+```bash
+cd /root/.openclaw/workspace/repos/migpt-claw
+bash scripts/run-morning-brief-warm.sh /path/to/morning-brief.txt "客厅"
+```
+
+也可以分步执行：
+
+```bash
+python3 scripts/morning-brief-warm-tts.py \
+  --input /path/to/morning-brief.txt \
+  --spoken-text-out /tmp/morning-brief-warm.txt \
+  --wav-out /tmp/morning-brief-warm-16k.wav
+
+node scripts/play-morning-brief-warm.mjs \
+  --file /tmp/morning-brief-warm-16k.wav \
+  --device "客厅"
+```
+
+#### 常用环境变量
+
+- `MORNING_BRIEF_DEVICE`：覆盖默认音箱名
+- `MORNING_BRIEF_PUBLIC_HOST`：公网主机/IP，默认 `185.194.141.235`
+- `MORNING_BRIEF_HTTP_PORT`：临时 HTTP 端口，默认 `18888`
+- `MORNING_BRIEF_HTTP_HOST`：临时 HTTP 绑定地址，默认 `0.0.0.0`
+- `MORNING_BRIEF_HTTP_DIR`：允许托管的目录，默认 `/tmp`
+- `MORNING_BRIEF_WAV_OUT`：转码后 wav 输出路径
+- `MORNING_BRIEF_SPOKEN_TEXT_OUT`：改写后口播稿输出路径
+
+#### dry-run / 帮助检查
+
+```bash
+python3 scripts/morning-brief-warm-tts.py --help
+node scripts/play-morning-brief-warm.mjs --help
+node scripts/play-morning-brief-warm.mjs --file /tmp/morning-brief-warm-16k.wav --dry-run
+bash scripts/run-morning-brief-warm.sh --help
+```
+
+#### 排错要点
+
+- `Missing MiMo API key`
+  - 先检查 `XIAOMI_API_KEY` / `MIMO_API_KEY`
+  - 再检查 `/root/.openclaw/workspace/.credentials/xiaomi-api.txt`
+- `channels.migpt not found`
+  - 检查 `~/.openclaw/openclaw.json`
+- `requires userId and password`
+  - 当前 MiNA 登录仍要求 `userId + password`，`passToken` 仅作辅助凭证
+- 小爱不播放 URL
+  - 确认公网主机/IP 可从外部访问
+  - 确认端口已放行
+  - 确认输出是 `16k mono wav`
+  - 确认音箱设备名和 `channels.migpt.devices` 一致
+- 端口冲突
+  - 改 `MORNING_BRIEF_HTTP_PORT` 或 `--http-port`
+
+#### 边界
+
+- **不会**自动创建 cron
+- **不会**写入真实密钥到仓库
+- **不会**修改 `~/.openclaw/openclaw.json`
+- **不会**在日志里输出密码、token、API key 正文
+
 ## 使用技能
 
 ### 播报规范

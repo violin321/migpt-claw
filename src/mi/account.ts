@@ -10,9 +10,9 @@ const kLoginAPI = 'https://account.xiaomi.com/pass';
 export async function getAccount(_account: MiAccount): Promise<MiAccount | undefined> {
   let account = _account;
   
-  // 打印使用的认证方式
+  // 打印使用的认证方式（脱敏）
   console.log('🔐 认证信息:', {
-    userId: account.userId,
+    hasUserId: !!account.userId,
     hasPassToken: !!account.passToken,
     hasPassword: !!account.password,
     hasServiceToken: !!account.serviceToken,
@@ -63,7 +63,7 @@ export async function getAccount(_account: MiAccount): Promise<MiAccount | undef
     return undefined;
   }
   let pass = parseAuthPass(res);
-  console.log('📝 serviceLogin 响应:', { code: pass.code, description: pass.description,res: res });
+  console.log('📝 serviceLogin 响应:', { code: pass.code, description: pass.description });
   
   if (pass.code !== 0) {
     // 登录态失效，重新登录
@@ -90,7 +90,6 @@ export async function getAccount(_account: MiAccount): Promise<MiAccount | undef
       console.error('❌ OAuth2 登录失败', res);
       return undefined;
     }
-    console.log('返回结果：', res.data);
     pass = parseAuthPass(res);
     console.log('📝 serviceLoginAuth2 响应:', {
       code: pass.code,
@@ -101,7 +100,6 @@ export async function getAccount(_account: MiAccount): Promise<MiAccount | undef
   }
   if (pass.location?.includes('identity/authStart')) {
     console.error('❌ 本次登录需要验证码，请检查 passToken 是否正确');
-    console.log('💡 当前使用的 passToken:', account.passToken?.slice(0, 20) + '...');
     return undefined;
   }
   if (!pass.location || !pass.nonce || !pass.ssecurity) {
