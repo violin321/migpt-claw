@@ -1,124 +1,66 @@
 # migpt-claw
 
-> Turn Xiaomi XiaoAI speakers into OpenClaw’s home voice entrypoint and playback endpoint.
->
-> 把小爱音箱接入 OpenClaw，作为家庭语音入口、播报终端与手动语音工作流桥接器。
+[中文](#中文) | [English](#english)
 
-**Status:** usable for controlled text-to-speaker playback and wake-word-based routing; the full inbound conversational loop is still under verification.
+## 中文
 
-## Overview
+`migpt-claw` 是一个面向 OpenClaw 的小米小爱音箱 Channel 插件实验实现，用来把 OpenClaw 的文本结果转成适合音箱场景的语音播报，并通过小米侧会话链路轮询用户对话。
 
-`migpt-claw` is an OpenClaw channel plugin that connects Xiaomi XiaoAI speakers to the OpenClaw runtime.
+它的目标是把 **OpenClaw Channel runtime**、**小米账号 / 设备访问链路**、以及**音箱场景下的播报约束**接起来，方便开发者做本地实验、兼容性验证和二次实现。
 
-It is intended to do three things:
+> [!IMPORTANT]
+> 本项目仍应视为实验性集成，不应被描述为：
+> - 小爱官方替代品
+> - 稳定低延迟语音助手
+> - 已完整验证的可靠打断方案
+> - 已确认可直接集成 cron / 自动化工作流的官方能力
+> - 任何来自小米或 OpenClaw 官方的支持或背书
 
-1. Let OpenClaw **play text replies on a XiaoAI speaker**.
-2. Let a XiaoAI interaction **optionally route into OpenClaw** when a configured `wakeWord` is detected in conversation history.
-3. Provide a **manual warm morning brief workflow** that rewrites a text brief into spoken audio and plays it on a speaker through MiNA URL playback.
+### 项目定位
 
-What it is:
+当前仓库主要覆盖以下方向：
 
-- an OpenClaw plugin/channel runtime integration
-- a wake-word-based bridge between XiaoAI conversation history and OpenClaw
-- a practical speaker playback endpoint for home voice workflows
+- 以 OpenClaw Channel 插件形式接入小爱音箱
+- 通过 **MiNA / MIoT** 控制音箱播报与部分设备行为
+- 通过 **XiaoAI conversation history chain** 轮询最近会话
+- 为音箱场景补充更适合 TTS 的输出约束
+- 提供一个仓库内技能 `skills/migpt-volume` 作为相关能力示例
 
-What it is not:
+它更适合被理解为：**MiGPT / MiGPT Next 思路在 OpenClaw Plugin / Channel runtime 上的一次接线与兼容探索**。
 
-- not a full replacement for XiaoAI
-- not an officially supported Xiaomi or OpenClaw integration
-- not a guarantee of stable real-time interruption, zero-delay routing, or long-running unattended reliability
-- not an automatic cron-based morning brief system
+### 当前能力概览
 
-## Features
+- **语音播报**：把 OpenClaw 输出转成小爱音箱播报
+- **分块播报**：长文本按 chunk 输出，尽量降低单次等待体感
+- **多设备 / 多账号配置基础**：支持按配置选择账户与设备
+- **MiNA / MIoT 双控制路径**：不同型号可尝试不同控制方式
+- **启动 / 收到消息提示**：支持基础上线播报和接收提示
+- **音量相关 skill**：内置 `skills/migpt-volume`
 
-### Implemented
+### 已知边界
 
-- OpenClaw → XiaoAI speaker text playback
-- wake-word routing based on XiaoAI conversation history polling
-- non-matching queries continue through native XiaoAI handling
-- selectable speaker control path: `mina` or `miot`
-- long-text **chunked playback** for text replies
-- startup announcement control via `announceOnStart`
-- receive acknowledgement control via `acknowledgeOnReceive`
-- manual warm morning brief playback workflow
-- bundled repository skill: `skills/migpt-volume`
+请在使用前先接受这些边界：
 
-### Experimental
+- **不是所有型号都验证过**：不同小爱音箱型号对 MiNA / MIoT 的支持存在差异
+- **打断能力不能夸大**：仓库内有相关占位与尝试，但不应宣称“可靠打断”已被系统性验证
+- **会话轮询依赖小米侧接口行为**：conversation history 链路可能受接口变化、账号状态、风控或地区差异影响
+- **延迟表现不保证稳定**：分块播报可改善体感，但不能承诺稳定低延迟
+- **自动化工作流仅能谨慎描述**：若你在外部流程里接了 `xiaomi-mimo-tts`、`mimo-tts-feishu-audio` 或 MiMo warm brief 脚本，它们应视为相关外部工作流 / 待验证链路，不应写成仓库已确认内建
+- **OpenClaw 兼容性需自行验证**：不同版本的 OpenClaw SDK / runtime 可能存在接口代差
 
-- full inbound → OpenClaw → speaker conversational loop stability
-- native XiaoAI reply interruption / overlap reduction
-- public URL audio playback compatibility across devices and networks
-- multi-device long-running reliability
+### 快速开始
 
-### Not in scope
-
-- replacing XiaoAI’s native smart home or assistant stack
-- claiming uniform behavior across all Xiaomi speaker models
-- promising full token-level streaming or system-level voice interception
-
-## How it works
-
-### 1. Voice inbound
-
-`User → XiaoAI wake → XiaoAI history polling → wakeWord filter → OpenClaw`
-
-The plugin polls XiaoAI conversation history through the MiNA conversation chain. If a new query contains the configured `wakeWord`, that word is removed and the remaining text is forwarded to OpenClaw.
-
-If the query does **not** contain the `wakeWord`, it stays on the native XiaoAI path.
-
-### 2. Voice outbound
-
-`OpenClaw reply → migpt-claw → MiNA / MIoT → XiaoAI speaker playback`
-
-Outbound text replies are sent through the plugin and played on the configured speaker. For longer text, the current implementation splits the message into chunks and plays them sequentially.
-
-This is **not** token streaming. It is best understood as long-text chunked playback.
-
-### 3. Manual warm morning brief
-
-`Brief text → MiMo TTS rewrite/audio → temp public URL → MiNA player_play_url → speaker`
-
-The repository includes a manual workflow that:
-
-1. rewrites a morning brief into a warm spoken script,
-2. generates WAV audio with MiMo TTS,
-3. exposes the audio through a temporary HTTP URL,
-4. calls MiNA `player_play_url` to play it on a XiaoAI speaker.
-
-This workflow is manual by design and does **not** install or attach cron automatically.
-
-## Quick start
-
-### 1. Install dependencies and build
-
-Run from this repository:
+#### 1. 安装插件
 
 ```bash
-npm install
-npm run build
+openclaw plugins install ./migpt-claw-1.0.0.tgz
 ```
 
-Optional verification commands already used in local validation notes:
+#### 2. 配置账号与设备
 
-```bash
-npx tsc --noEmit
-node scripts/check-announce-on-start-merge.mjs
-npm pack
-```
+编辑 `~/.openclaw/openclaw.json`。
 
-### 2. Pack and install the plugin
-
-```bash
-npm pack
-openclaw plugins install ./migpt-claw-1.0.0.tgz --force
-openclaw config validate
-```
-
-After installation or upgrade, a **process-level** Gateway restart is required so the runtime loads the new plugin code.
-
-### 3. Minimal configuration
-
-Add a `channels.migpt` section to your OpenClaw config:
+下面示例只展示字段结构与占位符，**不要**把真实密码、token、serviceToken、ssecurity 等敏感值提交到仓库。
 
 ```json
 {
@@ -126,314 +68,478 @@ Add a `channels.migpt` section to your OpenClaw config:
     "migpt": {
       "enabled": true,
       "userId": "123456789",
-      "password": "your_xiaomi_password",
-      "passToken": "your_xiaomi_pass_token",
+      "password": "<your-password>",
+      "passToken": "<your-pass-token>",
       "devices": ["客厅音箱"],
-      "wakeWord": "小龙虾",
-      "announceOnStart": false,
-      "acknowledgeOnReceive": false
+      "speakerControl": "mina",
+      "announceOnStart": true,
+      "startupMessage": "您的小龙虾已上线，随时为您服务",
+      "acknowledgeOnReceive": true,
+      "receiveMessage": "收到，处理中"
     }
   }
 }
 ```
 
-Notes:
+字段说明：
 
-- `devices` should match the Xiaomi / Mi Home device name exactly.
-- The schema accepts `passToken`, but current runtime paths should still be described cautiously; see [Configuration](#configuration).
-- If you are testing inbound routing, start with one device only.
+- `userId`：小米 ID（数字）
+- `password`：小米账号密码
+- `passToken`：登录辅助凭证；字段可以出现，但请勿泄露真实值
+- `devices`：目标小爱音箱名称列表，需与米家 App 中名称一致
+- `speakerControl`：`mina` 或 `miot`
+- `announceOnStart`：是否启动播报
+- `startupMessage`：启动播报文案
+- `acknowledgeOnReceive`：收到消息时是否给出提示
+- `receiveMessage`：接收提示文案
 
-### 4. First playback test
+#### 3. 选择音箱控制方式
 
-Use OpenClaw to send a text message to the speaker:
+`speakerControl` 用于指定控制路径：
 
-```bash
-openclaw message send \
-  --channel migpt \
-  --target "客厅音箱" \
-  --message "OpenClaw 小爱播报测试"
-```
+- `mina`：默认路径，适合多数音箱型号
+- `miot`：部分型号或场景下可尝试的替代路径
 
-Optional dry run:
+已知可能更需要 `miot` 的型号包括：
 
-```bash
-openclaw message send \
-  --channel migpt \
-  --target "客厅音箱" \
-  --message "OpenClaw 小爱 dry run 测试" \
-  --dry-run
-```
+- LX04（小爱音箱 Pro）
+- X10A（小爱音箱 X10）
+- L05B / L05C（小爱音箱 Play 增强版）
 
-### 5. First inbound routing test
+但这不是完整兼容性结论。更完整的设备经验可参考上游文档，例如 MiGPT 的兼容性说明：
+<https://github.com/idootop/mi-gpt/blob/main/docs/compatibility.md>
 
-Say a phrase that includes the configured wake word, for example:
+#### 4. 启动 / 重载 OpenClaw
 
-> 小爱同学，小龙虾，帮我问今天有什么安排
-
-Expected behavior:
-
-- native XiaoAI wake still happens first;
-- `migpt-claw` later sees the query through polling;
-- only messages containing `wakeWord` are forwarded to OpenClaw;
-- the forwarded payload excludes the `wakeWord` itself.
-
-Because this path depends on conversation polling, response timing is affected by `heartbeat`.
-
-## Configuration
-
-### Required
-
-- `userId`: Xiaomi account ID
-- `devices`: speaker names
-- `password` and/or `passToken`: see credential notes below
-
-### Recommended
-
-- `wakeWord`: strongly recommended so ordinary XiaoAI usage does not all route into OpenClaw
-- `speakerControl`: `mina` by default; try `miot` on devices that behave better through that path
-- `heartbeat`: controls conversation polling interval in milliseconds
-- `announceOnStart`: usually start with `false` during setup
-- `acknowledgeOnReceive`: usually start with `false` during setup
-- `receiveMessage`: only relevant when `acknowledgeOnReceive` is enabled
-
-### Advanced
-
-- `systemPrompt`: voice-scene behavior hints for the agent side
-- `startupMessage`: startup announcement content
-- account-level overrides through `channels.migpt.accounts`
-- outbound chunking-related behavior comes from current runtime defaults (`streaming` / `textChunkLimit` in code paths), but these are not yet cleanly documented as stable user-facing knobs
-
-### Credential notes: `password` / `passToken`
-
-Be careful here:
-
-- the config schema and setup validation allow either `passToken` or `password`
-- some README history implied `passToken` could replace `password`
-- however, current repository runtime and helper scripts still contain paths that require or expect `userId + password`, especially for MiNA login and the manual morning brief player
-
-Practical guidance:
-
-- treat `passToken` as a sensitive auxiliary credential, not a guaranteed complete replacement for password
-- assume Xiaomi login behavior may vary and captcha / token expiry can still happen
-- document examples with placeholders only; never commit real credentials
-
-### Key options
-
-| Option | What it does | Notes |
-|---|---|---|
-| `wakeWord` | Routes only matching queries into OpenClaw | Empty means more native queries may enter OpenClaw |
-| `speakerControl` | Chooses `mina` or `miot` for playback/control | Device-dependent behavior |
-| `heartbeat` | Poll interval for XiaoAI history | Lower can feel faster, but is still polling |
-| `announceOnStart` | Plays startup message after init | Recommended off for early testing |
-| `acknowledgeOnReceive` | Plays a short acknowledgement before reply handling | Can increase overlap/noise during testing |
-| `receiveMessage` | Text used for acknowledgement playback | Used only if acknowledgement is enabled |
-| `password` / `passToken` | Xiaomi auth inputs | Sensitive; runtime expectations still need care |
-
-## Wake word routing
-
-Current routing behavior is based on the code in `src/channel.ts` and `src/message.ts`:
-
-- only messages containing `wakeWord` are forwarded to OpenClaw
-- non-matching queries stay on the native XiaoAI path
-- if the utterance is only the wake word and has no remaining body, it is ignored
-- if `wakeWord` appears at the start, it is removed before forwarding
-- if `wakeWord` appears in the middle, the current logic removes that occurrence and forwards the rest
-- routing delay depends on history polling and therefore on `heartbeat`
-
-This is a polling bridge, not a system-level intercept.
-
-## Native reply interruption / duplicate playback reduction
-
-To reduce the “XiaoAI answers once, then OpenClaw answers again” effect, the plugin currently does a best-effort interruption attempt before acknowledgement or reply playback.
-
-The relevant path calls:
-
-- `abortXiaoAI()`
-- `stop()`
-
-This should be read narrowly:
-
-- it is an overlap-reduction attempt,
-- it is **not** a promise of reliable native reply interruption on every device,
-- behavior may differ by model, timing, and whether MiNA / MIoT control succeeds at that moment.
-
-## Manual warm morning brief TTS
-
-This repository keeps a **manual** warm morning brief workflow. It is useful when you want a one-shot spoken morning brief on a XiaoAI speaker without wiring it into cron.
-
-### Included scripts
-
-- `scripts/morning-brief-warm-tts.py`
-- `scripts/play-morning-brief-warm.mjs`
-- `scripts/run-morning-brief-warm.sh`
-
-### What the workflow does
-
-- reads a source brief text file
-- rewrites it into a warmer spoken script with MiMo TTS prompting
-- saves raw and normalized WAV output
-- serves the WAV through a temporary HTTP endpoint
-- asks MiNA to play that public URL on the target speaker
-
-### Requirements
-
-- `python3`
-- Python `requests`
-- `ffmpeg`
-- `node`
-- repository already built with `npm run build`
-- MiMo API key available through env or a local credentials file
-- a URL that is publicly reachable by the target playback path
-
-### One-command manual trigger
+按你当前的 OpenClaw 环境方式加载插件。若你在本地开发，通常至少需要：
 
 ```bash
-bash scripts/run-morning-brief-warm.sh /path/to/morning-brief.txt
+npm run build
 ```
 
-With an explicit speaker name:
+> `openclaw gateway restart` 属于环境操作，不应从外部 README 直接推断为所有场景的唯一步骤；请按你的本地 OpenClaw 版本与运维方式执行。
+
+### 设备名称要求
+
+设备名称必须与米家 App 中显示的名称一致，包括：
+
+- 大小写
+- 空格
+- 标点
+- “音响 / 音箱”等容易混淆的写法
+
+如果设备找不到，可临时打开调试日志，查看实际设备列表后再修正配置。
+
+### 音箱场景下的输出约束
+
+本项目假设语音播报并不适合承载所有内容。
+
+更适合播报的内容：
+
+- 简短确认
+- 短问答
+- 状态提醒
+- 简短摘要
+
+不适合直接播报的内容：
+
+- 代码
+- 长篇文档
+- 大块结构化数据
+- 多链接、多媒体集合
+
+因此仓库里会把“小爱音箱播报”视为一个**受约束的输出渠道**，而不是通用完整 UI。
+
+### 故障排查
+
+#### 登录失败 / 需要验证码
+
+常见现象：
+
+- 登录态失效
+- 需要验证码
+- 配置存在 `passToken` 字段但仍无法直接通过
+
+建议排查：
+
+1. 重新确认 `userId` / `password` 是否正确
+2. 确认 `passToken` 是否只是辅助凭证，而不是被误认为密码替代品
+3. 如本地缓存登录态异常，检查 `.mi.json` 相关缓存后再重试
+4. 注意 `serviceToken`、`ssecurity` 等字段名可以出现在代码 / 配置结构中，但不要把真实值写入文档或 issue
+
+#### 设备未找到
+
+建议排查：
+
+1. 核对设备名称是否与米家 App 完全一致
+2. 尝试切换 `speakerControl: "mina"` / `"miot"`
+3. 查看调试日志中枚举到的设备名称、设备标识
+
+#### 会话轮询失败
+
+若 `getConversations` 相关链路异常，通常需要考虑：
+
+1. 网络状态
+2. 小米接口行为变化
+3. 账号风控 / 登录态失效
+4. 当前设备 / 账号是否真的存在可读取的 XiaoAI conversation history
+
+### 项目结构
+
+```text
+migpt-claw/
+├── index.ts                 # 插件入口
+├── src/
+│   ├── channel.ts           # Channel 核心
+│   ├── service.ts           # 认证与服务接线
+│   ├── message.ts           # 会话轮询
+│   ├── speaker.ts           # TTS / 播放控制
+│   ├── config.ts            # 配置解析
+│   ├── outbound.ts          # 出站播报
+│   ├── onboarding.ts        # setup 向导适配
+│   ├── runtime.ts           # OpenClaw runtime 接线
+│   ├── mi/
+│   │   ├── account.ts       # 小米账号登录链路
+│   │   ├── common.ts        # Mi 服务公共逻辑
+│   │   ├── mina.ts          # MiNA API 路径
+│   │   ├── miot.ts          # MIoT API 路径
+│   │   └── typing.ts        # 小米侧类型定义
+│   └── utils/
+│       ├── http.ts
+│       ├── codec.ts
+│       ├── hash.ts
+│       ├── io.ts
+│       └── parse.ts
+└── skills/
+    └── migpt-volume/
+        ├── index.ts
+        └── SKILL.md
+```
+
+### 开发
 
 ```bash
-bash scripts/run-morning-brief-warm.sh /path/to/morning-brief.txt "客厅音箱"
+npm install
+npm run build
+npm pack --dry-run
 ```
 
-### Helpful checks
+### Credits
 
-```bash
-python3 scripts/morning-brief-warm-tts.py --help
-node scripts/play-morning-brief-warm.mjs --help
-bash scripts/run-morning-brief-warm.sh --help
-```
+感谢以下项目与实现思路提供参考：
 
-### Important boundaries
+- **[MiGPT](https://github.com/idootop/mi-gpt)**
+- **[MiGPT Next](https://github.com/idootop/migpt-next)**
+- **[MiService](https://github.com/yihong0618/MiService)**
+- **OpenClaw Plugin / Channel runtime**
 
-- manual trigger only
-- no cron is installed or configured automatically
-- no OpenClaw config is rewritten by these scripts
-- public URL playback means the audio resource may be exposed while it is being served
+### Sources / Architecture Notes
 
-## Troubleshooting
+本仓库 README 所描述的能力边界，基于以下关联链路理解整理：
 
-### Login / captcha issues
+- **MiNA / MIoT / XiaoAI conversation history chain**：对应音箱控制、设备访问、对话轮询链路
+- **in-repo skill: `skills/migpt-volume`**：仓库内与音箱场景直接相关的 skill 示例
+- **MiMo warm brief scripts**：可视为相关思路或周边脚本链路，但不应默认视为本仓库已内建能力
+- **Related external workflow / To verify**：`xiaomi-mimo-tts`、`mimo-tts-feishu-audio`
 
-If Xiaomi login triggers captcha or inconsistent auth behavior:
+如果你在文档、演示或二次分发中引用这些链路，请保留“相关 / 待验证”边界，不要把它们写成仓库已经正式确认或完整集成的功能。
 
-- retry carefully with a test account
-- re-check whether your current runtime path expects `password`
-- do not assume `passToken` alone will always be enough
+### Skill Dependencies
 
-### `password` / `passToken` confusion
+当前仓库中可以明确看到的 skill 依赖 / 关联只有：
 
-If one setup path appears to accept `passToken` but another fails:
+- `skills/migpt-volume`
 
-- check the actual script or runtime path you are using
-- the manual `play-morning-brief-warm.mjs` path explicitly requires `userId` and `password`
-- some plugin schema/setup messaging is looser than current runtime reality
+除此之外，若你在自己的 OpenClaw 环境里组合其他 skills、agents 或自动化流程，那属于你的部署层编排，不应默认归因到本仓库本身。
 
-### Device name mismatch
+### AI-Assisted Development
 
-If a speaker cannot be found:
+现有仓库历史中包含 AI 辅助开发痕迹；这属于实现过程信息，不构成对结果稳定性、兼容性或官方支持的额外承诺。
 
-- verify the device name exactly as shown in the Xiaomi app
-- avoid local nicknames that do not exist in Xiaomi/Mi Home
-- test with a single device first
-
-### URL does not play
-
-If `player_play_url` succeeds poorly or the speaker stays silent:
-
-- verify the URL is publicly reachable
-- verify the file is in a compatible format, ideally normalized WAV as used by the included script
-- verify temporary HTTP port exposure and routing
-- expect differences across devices
-
-### Polling feels slow
-
-Inbound routing is not instantaneous. If it feels delayed:
-
-- check `heartbeat`
-- remember this is conversation history polling, not direct voice interception
-
-### Token / session expiry
-
-If previously working auth stops working:
-
-- Xiaomi-side tokens may have expired
-- re-login may be needed
-- cached account/session behavior may differ by path
-
-### Multi-device differences
-
-If one device behaves differently from another:
-
-- that is expected for now
-- compare `speakerControl` mode and model behavior
-- keep claims conservative until you validate your own hardware
-
-## Roadmap
-
-### Current
-
-- OpenClaw text-to-speaker playback
-- wake-word routing through conversation polling
-- native XiaoAI fallback for non-wake-word queries
-- MiNA / MIoT selection
-- long-text chunked playback
-- startup / acknowledgement playback controls
-- manual warm morning brief playback workflow
-
-### Next
-
-- setup / onboarding cleanup
-- diagnostics and logging improvements
-- device compatibility matrix
-- clearer workflow documentation
-- `passToken` / `password` documentation cleanup
-
-### Future
-
-- more stable interruption strategy
-- home voice workflow examples
-- richer skill / workflow integration
-- multi-device orchestration
-
-## Credits / Sources
-
-This repository sits on top of several upstream ideas and runtime layers.
-
-### Confirmed references in this repo
-
-- **MiGPT / MiGPT Next** — inspiration and direction for connecting XiaoAI speakers with LLM-style workflows
-- **MiService** — Xiaomi auth, MiNA, and MIoT reference chain used by this implementation
-- **OpenClaw Plugin / Channel runtime** — host runtime and plugin interface used by `migpt-claw`
-- **MiNA / MIoT / XiaoAI conversation history chain** — technical path used for playback, device control, and inbound polling
-
-### Repository-level provenance notes
-
-- `openclaw.plugin.json` defines the plugin metadata, schema, and `activation.onStartup`
-- `src/channel.ts` contains polling, wake-word filtering, and inbound dispatch logic
-- `src/outbound.ts` contains text/media outbound behavior and chunked playback logic
-- `scripts/` contains the manual MiMo TTS → URL → MiNA playback workflow
-
-## Skill Dependencies / Related Workflows
-
-| Item | Status | Notes |
-|---|---|---|
-| OpenClaw plugin/channel runtime | Confirmed | Host runtime and plugin API used by this repository |
-| `skills/migpt-volume` | Confirmed | Bundled repo skill present under `skills/migpt-volume` |
-| MiMo TTS warm brief scripts | Confirmed | `scripts/morning-brief-warm-tts.py`, `play-morning-brief-warm.mjs`, `run-morning-brief-warm.sh` |
-| `xiaomi-mimo-tts` skill | Related external workflow / To verify | Mentioned as related workflow lineage only; not confirmed inside this repo |
-| `mimo-tts-feishu-audio` | Related external workflow / To verify | Related workflow reference; not confirmed inside this repo |
-| 内部温柔晨报链路 | Deployment/workflow provenance / To verify | Operational lineage, not a confirmed repo dependency |
-
-## Security / Privacy
-
-- never commit Xiaomi credentials, `passToken`, `serviceToken`, or MiMo API keys
-- XiaoAI conversation history polling has privacy implications: voice queries visible to that history path may be processed by this plugin when routing conditions match
-- public URL playback for the manual brief workflow means the served audio may be exposed to anyone who can reach that temporary URL during its lifetime
-- prefer a test account / least-exposure setup for integration and validation
-- protect OpenClaw config files, backups, and logs because they may contain sensitive operational data
-
-## License
+### License
 
 MIT
+
+### 免责声明
+
+本项目仅供学习、研究与个人实验使用。请务必注意：
+
+- 使用时需遵守当地法律法规以及小米相关服务条款
+- 本项目与小米公司无官方关联，也不构成任何官方支持或背书
+- 使用本项目可能带来账号、设备、接口兼容性与风控风险
+- 建议仅使用测试环境、测试账号或非关键设备进行验证
+- 项目按“原样”提供，不承诺可用性、稳定性、连续性或适配范围
+
+---
+
+## English
+
+`migpt-claw` is an experimental Xiaomi XiaoAI speaker channel plugin for OpenClaw. It connects OpenClaw outputs to speaker-friendly TTS playback and polls recent XiaoAI-side conversation history so the speaker can act as a constrained voice endpoint.
+
+Its purpose is to bridge the **OpenClaw Channel runtime**, the **Xiaomi account / device access path**, and the **output constraints required by voice-first speaker usage** for local experiments, compatibility checks, and follow-up implementations.
+
+> [!IMPORTANT]
+> This project should still be treated as an experimental integration. It should **not** be described as:
+> - an official replacement for XiaoAI,
+> - a stable low-latency voice assistant,
+> - a fully verified reliable interruption solution,
+> - a confirmed built-in cron / automation integration,
+> - or anything officially supported or endorsed by Xiaomi or OpenClaw.
+
+### Positioning
+
+This repository currently focuses on:
+
+- exposing XiaoAI speakers as an OpenClaw channel plugin,
+- using **MiNA / MIoT** to drive playback and some device actions,
+- polling the **XiaoAI conversation history chain** for recent user messages,
+- adding TTS-oriented output constraints for speaker scenarios,
+- and shipping an in-repo skill example at `skills/migpt-volume`.
+
+A practical way to view it is: **an OpenClaw-side wiring and compatibility exploration inspired by MiGPT / MiGPT Next ideas**.
+
+### What it currently does
+
+- **Voice playback** for OpenClaw text responses
+- **Chunked playback** for longer text to reduce perceived waiting time
+- **Basic multi-account / multi-device configuration support**
+- **Dual control paths through MiNA and MIoT**
+- **Startup / receive acknowledgements**
+- **A bundled volume-related skill** at `skills/migpt-volume`
+
+### Known limits
+
+Please keep these limits in mind:
+
+- **Not all speaker models have been verified**
+- **Interruption support should not be overstated**; the repo contains related attempts/placeholders, not a broadly validated guarantee
+- **Conversation polling depends on Xiaomi-side interfaces** and may break with API changes, auth state, risk controls, or regional differences
+- **Latency is not guaranteed to be consistently low** even with chunked playback
+- **Automation workflows must be described carefully**; if you connect external flows such as `xiaomi-mimo-tts`, `mimo-tts-feishu-audio`, or MiMo warm brief scripts, they should be labeled as related external workflows / to verify
+- **OpenClaw compatibility must be checked in your own environment**, because SDK/runtime surfaces may differ across versions
+
+### Quick start
+
+#### 1. Install the plugin
+
+```bash
+openclaw plugins install ./migpt-claw-1.0.0.tgz
+```
+
+#### 2. Configure account and devices
+
+Edit `~/.openclaw/openclaw.json`.
+
+The example below shows only field structure and placeholders. **Do not** commit real passwords, tokens, `serviceToken`, or `ssecurity` values.
+
+```json
+{
+  "channels": {
+    "migpt": {
+      "enabled": true,
+      "userId": "123456789",
+      "password": "<your-password>",
+      "passToken": "<your-pass-token>",
+      "devices": ["Living Room Speaker"],
+      "speakerControl": "mina",
+      "announceOnStart": true,
+      "startupMessage": "Your lobster assistant is online.",
+      "acknowledgeOnReceive": true,
+      "receiveMessage": "Got it, processing now."
+    }
+  }
+}
+```
+
+Field notes:
+
+- `userId`: Xiaomi account ID
+- `password`: Xiaomi account password
+- `passToken`: auxiliary login credential; the field name may appear, but real values should stay private
+- `devices`: target XiaoAI speaker names, matching the Mi Home app exactly
+- `speakerControl`: `mina` or `miot`
+- `announceOnStart`: whether to speak a startup message
+- `startupMessage`: startup TTS text
+- `acknowledgeOnReceive`: whether to acknowledge an incoming message
+- `receiveMessage`: acknowledgement text
+
+#### 3. Choose the speaker control path
+
+`speakerControl` selects the communication path:
+
+- `mina`: default path for many speaker models
+- `miot`: an alternative path worth trying on some models or scenarios
+
+Models sometimes reported as more likely to need `miot` include:
+
+- LX04 (XiaoAI Speaker Pro)
+- X10A (XiaoAI Speaker X10)
+- L05B / L05C (XiaoAI Speaker Play Enhanced)
+
+That is **not** a complete compatibility claim. For broader upstream experience, see MiGPT compatibility notes:
+<https://github.com/idootop/mi-gpt/blob/main/docs/compatibility.md>
+
+#### 4. Build / load in OpenClaw
+
+Load the plugin according to your own OpenClaw environment. For local development, you will usually at least need:
+
+```bash
+npm run build
+```
+
+> `openclaw gateway restart` is an environment operation, not a universal one-line instruction that should be assumed from this README alone. Use whatever lifecycle flow matches your OpenClaw version and setup.
+
+### Device naming
+
+Device names must match the Mi Home app exactly, including:
+
+- letter case,
+- spaces,
+- punctuation,
+- and easy-to-mix wording differences.
+
+If a device cannot be found, enable debugging temporarily and inspect the enumerated device list before adjusting config.
+
+### Output constraints for speaker use
+
+This project assumes that voice playback is not a suitable carrier for every kind of content.
+
+Good fit for playback:
+
+- short confirmations,
+- short Q&A,
+- status reminders,
+- concise summaries.
+
+Poor fit for direct playback:
+
+- code,
+- long-form documents,
+- large structured data,
+- link-heavy or media-heavy bundles.
+
+So the speaker is treated as a **constrained output channel**, not a full general-purpose UI.
+
+### Troubleshooting
+
+#### Login failures / captcha-like auth issues
+
+Common causes include:
+
+- expired auth state,
+- extra verification required,
+- or a mistaken assumption that `passToken` fully replaces the password.
+
+Suggested checks:
+
+1. verify `userId` / `password`,
+2. treat `passToken` as an auxiliary credential rather than a guaranteed password replacement,
+3. inspect local `.mi.json` cache state if auth looks stale,
+4. keep field names like `serviceToken` and `ssecurity` out of sensitive disclosures unless you are only referring to schema structure.
+
+#### Device not found
+
+Suggested checks:
+
+1. make sure the speaker name exactly matches Mi Home,
+2. try switching `speakerControl` between `mina` and `miot`,
+3. inspect debug logs for enumerated device identifiers and names.
+
+#### Conversation polling issues
+
+If the `getConversations` path fails, check:
+
+1. network state,
+2. Xiaomi-side API behavior changes,
+3. auth/risk-control issues,
+4. whether the current account/device really exposes readable XiaoAI conversation history.
+
+### Repository layout
+
+```text
+migpt-claw/
+├── index.ts                 # plugin entry
+├── src/
+│   ├── channel.ts           # channel core
+│   ├── service.ts           # auth and service wiring
+│   ├── message.ts           # conversation polling
+│   ├── speaker.ts           # TTS / playback control
+│   ├── config.ts            # config parsing
+│   ├── outbound.ts          # outbound playback
+│   ├── onboarding.ts        # setup wizard adapter
+│   ├── runtime.ts           # OpenClaw runtime bridge
+│   ├── mi/
+│   │   ├── account.ts       # Xiaomi account login chain
+│   │   ├── common.ts        # shared Xiaomi service logic
+│   │   ├── mina.ts          # MiNA API path
+│   │   ├── miot.ts          # MIoT API path
+│   │   └── typing.ts        # Xiaomi-side typings
+│   └── utils/
+│       ├── http.ts
+│       ├── codec.ts
+│       ├── hash.ts
+│       ├── io.ts
+│       └── parse.ts
+└── skills/
+    └── migpt-volume/
+        ├── index.ts
+        └── SKILL.md
+```
+
+### Development
+
+```bash
+npm install
+npm run build
+npm pack --dry-run
+```
+
+### Credits
+
+Thanks to the following projects and implementation ideas:
+
+- **[MiGPT](https://github.com/idootop/mi-gpt)**
+- **[MiGPT Next](https://github.com/idootop/migpt-next)**
+- **[MiService](https://github.com/yihong0618/MiService)**
+- **OpenClaw Plugin / Channel runtime**
+
+### Sources / Architecture Notes
+
+The boundaries described in this README are grounded in the following related chains and sources:
+
+- **MiNA / MIoT / XiaoAI conversation history chain** for speaker control, device access, and conversation polling
+- **in-repo skill: `skills/migpt-volume`** as the clearest bundled skill dependency/example
+- **MiMo warm brief scripts** as related ideas or adjacent scripts, not default built-in capabilities
+- **Related external workflow / To verify**: `xiaomi-mimo-tts`, `mimo-tts-feishu-audio`
+
+If you reference these in docs, demos, or downstream packaging, keep the “related / to verify” boundary explicit instead of presenting them as confirmed first-class features of this repository.
+
+### Skill Dependencies
+
+The only clearly visible skill dependency / association inside this repository is:
+
+- `skills/migpt-volume`
+
+Anything else you compose in your own OpenClaw deployment belongs to your environment-level orchestration, not this repo by default.
+
+### AI-Assisted Development
+
+Repository history includes AI-assisted implementation traces. That is process metadata, not an extra promise of stability, compatibility, or official support.
+
+### License
+
+MIT
+
+### Disclaimer
+
+This project is intended for learning, research, and personal experimentation.
+
+- Follow your local laws and Xiaomi-related terms of service
+- This project is not officially affiliated with Xiaomi and does not imply official support
+- It may carry account, device, API compatibility, and risk-control risks
+- Prefer test environments, test accounts, and non-critical devices
+- The project is provided on an “as is” basis, with no guarantee of availability, stability, continuity, or device coverage
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=violin321/migpt-claw&type=Date)](https://www.star-history.com/#violin321/migpt-claw&Date)
