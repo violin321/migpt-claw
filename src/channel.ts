@@ -1,5 +1,7 @@
-import type { ChannelPlugin } from 'openclaw/plugin-sdk';
-import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk';
+import type { ChannelPlugin, PluginRuntime } from 'openclaw/plugin-sdk/core';
+import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/core';
+import { formatInboundEnvelope, resolveEnvelopeFormatOptions } from 'openclaw/plugin-sdk/channel-inbound';
+import { dispatchReplyWithBufferedBlockDispatcher, finalizeInboundContext } from 'openclaw/plugin-sdk/reply-runtime';
 import type { ResolvedMiAccount, ExtendedOpenClawConfig } from './types.js';
 import {
   resolveMiAccount,
@@ -11,7 +13,6 @@ import {
   formatMiAllowFrom,
 } from './config.js';
 import { miOutbound } from './outbound.js';
-import { miGPTOnboardingAdapter } from './onboarding.js';
 import { MiService } from './service.js';
 import { MiMessage } from './message.js';
 import { sleep } from './utils/parse.js';
@@ -46,38 +47,29 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
     blockStreaming: false,
   },
   reload: { configPrefixes: ['channels.migpt'] },
-  onboarding: miGPTOnboardingAdapter,
 
-  // 新增：Agent Prompt 配置，用于定制 AI 在音箱场景下的行为规范
+  // 2026.5.4 的 agentPrompt 适配为提示/能力描述，而非可写配置面
   agentPrompt: {
-    description: '音箱播报规范',
-    getConfig: (cfg: any) => {
-      const migptCfg = cfg.channels?.migpt;
-      return {
-        enabled: true,
-        systemPrompt: migptCfg?.systemPrompt,
-      };
-    },
-    applyConfig: (cfg: any, updates: any) => {
-      const nextCfg = { ...cfg } as ExtendedOpenClawConfig;
-      const nextMigpt = { ...nextCfg.channels?.migpt };
-      if (updates.systemPrompt !== undefined) {
-        nextMigpt.systemPrompt = updates.systemPrompt;
-      }
-      nextCfg.channels = { ...nextCfg.channels, migpt: nextMigpt };
-      return nextCfg;
-    },
+    inboundFormattingHints: () => ({
+      text_markup: 'plain',
+      rules: [
+        '回复要适合语音播报，优先短句和口语化表达。',
+        '避免 URL、代码块、表格和复杂格式。',
+        '内容过长时先给简短结论，再提示切换到其他渠道查看详情。',
+      ],
+    }),
+    messageToolCapabilities: () => ['supports_tts_playback'],
   },
 
   config: {
-    listAccountIds: (cfg) => listMiAccountIds(cfg as unknown as ExtendedOpenClawConfig),
+    listAccountIds: (cfg) => listMiAccountIds(cfg as ExtendedOpenClawConfig),
     resolveAccount: (cfg, accountId) =>
-      resolveMiAccount(cfg as unknown as ExtendedOpenClawConfig, accountId),
-    defaultAccountId: (cfg) => resolveDefaultMiAccountId(cfg as unknown as ExtendedOpenClawConfig),
+      resolveMiAccount(cfg as ExtendedOpenClawConfig, accountId ?? undefined),
+    defaultAccountId: (cfg) => resolveDefaultMiAccountId(cfg as ExtendedOpenClawConfig),
     setAccountEnabled: ({ cfg, accountId, enabled }) =>
-      setMiAccountEnabled(cfg as unknown as ExtendedOpenClawConfig, accountId, enabled),
+      setMiAccountEnabled(cfg as ExtendedOpenClawConfig, accountId, enabled),
     deleteAccount: ({ cfg, accountId }) =>
-      deleteMiAccount(cfg as unknown as ExtendedOpenClawConfig, accountId),
+      deleteMiAccount(cfg as ExtendedOpenClawConfig, accountId),
     isConfigured: (account) => account.configured,
     describeAccount: (account) => ({
       accountId: account.accountId,
@@ -86,9 +78,12 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
       name: account.name,
       devices: account.devices,
     }),
-    resolveAllowFrom: ({ cfg, accountId }: { cfg: any; accountId?: string }) =>
-      resolveMiAllowFrom(cfg as unknown as ExtendedOpenClawConfig, accountId),
-    formatAllowFrom: ({ allowFrom }: { allowFrom: Array<string | number> }) => formatMiAllowFrom(allowFrom),
+    resolveAllowFrom: ({ cfg, accountId }) =>
+      resolveMiAllowFrom(cfg as ExtendedOpenClawConfig, accountId ?? undefined),
+    formatAllowFrom: ({ cfg, accountId, allowFrom }) =>
+      formatMiAllowFrom(
+        resolveMiAllowFrom(cfg as ExtendedOpenClawConfig, accountId ?? undefined, allowFrom),
+      ),
   },
 
   setup: {
@@ -144,18 +139,14 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
   },
 
   messaging: {
-    normalizeTarget: (target: string) => {
-      // 支持格式：migpt:客厅音箱 或 客厅音箱
-      let id = target.replace(/^migpt:/i, '');
-      if (id.trim()) {
-        return { ok: true, to: id.trim() };
-      }
-      return { ok: false, error: 'Invalid target format' };
+    normalizeTarget: (raw: string) => {
+      const normalized = raw.replace(/^migpt:/i, '').trim();
+      return normalized || undefined;
     },
     targetResolver: {
-      looksLikeId: (id: string): boolean => {
-        // 简单的启发式判断：非空字符串
-        return id.length > 0 && id.length < 100;
+      looksLikeId: (raw: string, normalized?: string): boolean => {
+        const candidate = normalized ?? raw;
+        return candidate.length > 0 && candidate.length < 100;
       },
       hint: 'MiGPT 目标格式：设备名称（如：客厅音箱）',
     },
@@ -174,18 +165,18 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
         return;
       }
 
-      // 获取设备列表
       const devices = account.devices;
       if (devices.length === 0) {
         log?.error(`[migpt:${account.accountId}] No devices configured`);
         return;
       }
 
-      // 为每个设备启动轮询
+      const pluginRuntime = getMiGPTRuntime();
+      const channelRuntime = (ctx.channelRuntime ?? createChannelRuntimeFallback(pluginRuntime)) as any;
+
       const devicePromises = devices.map(async (deviceName: string) => {
         log?.info(`[migpt:${account.accountId}] Starting poller for device: ${deviceName}`);
 
-        // 初始化服务（传递启动播报配置）
         const initSuccess = await MiService.init({
           ...account.config,
           announceOnStart: account.config.announceOnStart ?? cfg.channels?.migpt?.announceOnStart,
@@ -196,10 +187,8 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
           return;
         }
 
-        // 设置调试模式和音箱控制方式
         Debugger.debug = account.config.debug ?? false;
 
-        // 更新状态
         ctx.setStatus({
           ...ctx.getStatus(),
           running: true,
@@ -207,17 +196,14 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
           lastConnectedAt: Date.now(),
         });
 
-        // 获取轮询间隔
         const heartbeat = cfg.channels?.migpt?.heartbeat ?? 1000;
 
-        // 轮询消息
         while (!abortSignal.aborted) {
           try {
             const msg = await MiMessage.fetchNextMessage(deviceName);
             if (msg) {
               log?.info(`[migpt:${account.accountId}] Received message from ${deviceName}: ${msg.text.slice(0, 50)}...`);
 
-              // ============ 收到消息时回复收到 ============
               const acknowledgeOnReceive = account.config.acknowledgeOnReceive
                 ?? cfg.channels?.migpt?.acknowledgeOnReceive ?? false;
 
@@ -235,54 +221,39 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
                 }
               }
 
-              // 记录活动
-              const pluginRuntime = getMiGPTRuntime();
               pluginRuntime.channel.activity.record({
                 channel: 'migpt',
                 accountId: account.accountId,
                 direction: 'inbound',
               });
 
-              // 构建路由
               const fromAddress = `migpt:${deviceName}`;
               const toAddress = `migpt:${account.accountId}`;
-              const sessionKey = `${account.accountId}:${deviceName}`;
+              const route = channelRuntime.routing.resolveAgentRoute({
+                cfg,
+                channel: 'migpt',
+                accountId: account.accountId,
+                peer: { kind: 'direct', id: deviceName },
+              });
 
-              // ============ 系统提示词注入 ============
-              // 收集系统提示词（账户级别 + 全局）
               const systemPrompts: string[] = [];
-              
-              // 账户级别的 systemPrompt
               if (account.config.systemPrompt) {
                 systemPrompts.push(account.config.systemPrompt);
               }
-              
-              // 全局 systemPrompt
-              const globalSystemPrompt = (cfg as any).channels?.migpt?.systemPrompt;
+              const globalSystemPrompt = (cfg as ExtendedOpenClawConfig).channels?.migpt?.systemPrompt;
               if (globalSystemPrompt && globalSystemPrompt !== account.config.systemPrompt) {
                 systemPrompts.push(globalSystemPrompt);
               }
 
-              // 构建消息体
-              const envelopeOptions = pluginRuntime.channel.reply.resolveEnvelopeFormatOptions(cfg);
-              const body = pluginRuntime.channel.reply.formatInboundEnvelope({
-                Body: msg.text,
-                BodyForAgent: msg.text,
-                From: fromAddress,
-                To: toAddress,
-                SessionKey: sessionKey,
-                ChatType: 'direct',
-                SenderId: deviceName,
-                SenderName: deviceName,
-                Provider: 'migpt',
-                Surface: 'migpt',
-                MessageSid: `${deviceName}-${msg.timestamp}`,
-                Timestamp: msg.timestamp,
-                OriginatingChannel: 'migpt',
-                envelopeOptions,
+              const envelopeOptions = channelRuntime.reply.resolveEnvelopeFormatOptions(cfg);
+              const body = channelRuntime.reply.formatAgentEnvelope({
+                channel: 'migpt',
+                from: fromAddress,
+                body: msg.text,
+                timestamp: msg.timestamp,
+                envelope: envelopeOptions,
               });
 
-              // 默认的音箱场景提示词（如果没有配置 systemPrompt）
               const DEFAULT_SPEAKER_PROMPT = `【音箱播报规范 - 必须遵守】
 你是一个智能音箱助手，通过语音与用户交流。请遵守以下规范：
 
@@ -304,7 +275,6 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
 - 代码场景："代码已生成并发送到你的邮箱，请注意查收"
 - 多媒体场景："这张图片很有趣，已发送到你的手机查看"`;
 
-              // 构建 AI 看到的完整上下文
               const contextInfo = `你正在通过小米音箱与用户对话。
 
 【会话上下文】
@@ -313,20 +283,18 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
 - 消息 ID: ${deviceName}-${msg.timestamp}
 - 当前时间：${new Date(msg.timestamp).toLocaleString('zh-CN')}`;
 
-              // BodyForAgent: AI 实际看到的完整上下文（动态数据 + 系统提示 + 用户输入）
               const agentBody = systemPrompts.length > 0
                 ? `${contextInfo}\n\n${systemPrompts.join("\n\n")}\n\n${msg.text}`
                 : `${contextInfo}\n\n${DEFAULT_SPEAKER_PROMPT}\n\n${msg.text}`;
 
-              // 构建上下文
-              const ctxPayload = pluginRuntime.channel.reply.finalizeInboundContext({
+              const ctxPayload = finalizeInboundContext({
                 Body: body,
                 BodyForAgent: agentBody,
                 RawBody: msg.text,
                 CommandBody: msg.text,
                 From: fromAddress,
                 To: toAddress,
-                SessionKey: sessionKey,
+                SessionKey: route.sessionKey,
                 AccountId: account.accountId,
                 ChatType: 'direct',
                 SenderId: deviceName,
@@ -340,17 +308,15 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
                 CommandAuthorized: true,
               });
 
-              // 分派消息到 OpenClaw
-              await pluginRuntime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+              await dispatchReplyWithBufferedBlockDispatcher({
                 ctx: ctxPayload,
                 cfg,
                 dispatcherOptions: {
                   responsePrefix: '',
                   deliver: async (payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string }, info: { kind: string }) => {
                     log?.info(`[migpt:${account.accountId}] deliver called, kind: ${info.kind}`);
-                    // 这里可以处理 AI 的回复并发送到音箱
                     if (payload.text) {
-                      MiSpeaker.play({ text: payload.text });
+                      await MiSpeaker.play({ text: payload.text });
                     }
                   },
                 },
@@ -384,25 +350,49 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
       lastInboundAt: null,
       lastOutboundAt: null,
     },
-    buildChannelSummary: ({ snapshot }: { snapshot: any }) => ({
+    buildChannelSummary: ({ snapshot }: { snapshot: Record<string, any> }) => ({
       configured: snapshot.configured ?? false,
       running: snapshot.running ?? false,
       connected: snapshot.connected ?? false,
       lastConnectedAt: snapshot.lastConnectedAt ?? null,
       lastError: snapshot.lastError ?? null,
     }),
-    buildAccountSnapshot: ({ account, runtime }: { account: any; runtime: any }) => ({
-      accountId: account?.accountId ?? DEFAULT_ACCOUNT_ID,
-      name: account?.name,
-      enabled: account?.enabled ?? false,
-      configured: Boolean(account?.configured),
-      devices: account?.devices,
+    buildAccountSnapshot: ({ account, runtime }: { account: Record<string, any>; runtime?: Record<string, any> | null }) => ({
+      accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
+      name: account.name,
+      enabled: account.enabled ?? false,
+      configured: Boolean(account.configured),
       running: runtime?.running ?? false,
       connected: runtime?.connected ?? false,
       lastConnectedAt: runtime?.lastConnectedAt ?? null,
-      lastError: runtime?.lastError ?? null,
+      lastError: typeof runtime?.lastError === 'string' ? runtime.lastError : null,
       lastInboundAt: runtime?.lastInboundAt ?? null,
       lastOutboundAt: runtime?.lastOutboundAt ?? null,
     }),
   },
 };
+
+function createChannelRuntimeFallback(runtime: PluginRuntime) {
+  return {
+    routing: {
+      resolveAgentRoute: ({ cfg, channel, accountId, peer }: { cfg: any; channel: string; accountId: string; peer: { kind: string; id: string } }) =>
+        runtime.channel.routing.resolveAgentRoute({
+          cfg,
+          channel,
+          accountId,
+          peer: { kind: peer.kind === 'direct' ? 'direct' : 'group', id: peer.id },
+        }),
+    },
+    reply: {
+      resolveEnvelopeFormatOptions,
+      formatAgentEnvelope: ({ channel, from, body, timestamp, envelope }: { channel: string; from: string; body: string; timestamp?: number; envelope?: unknown }) =>
+        formatInboundEnvelope({
+          channel,
+          from,
+          body,
+          timestamp,
+          envelope: envelope as any,
+        }),
+    },
+  };
+}

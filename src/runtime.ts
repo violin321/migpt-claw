@@ -1,4 +1,4 @@
-import type { PluginRuntime } from "openclaw/plugin-sdk";
+import type { PluginRuntime } from 'openclaw/plugin-sdk/core';
 
 let runtime: PluginRuntime | null = null;
 
@@ -8,7 +8,7 @@ export function setMiGPTRuntime(next: PluginRuntime) {
 
 export function getMiGPTRuntime(): PluginRuntime {
   if (!runtime) {
-    throw new Error("MiGPT runtime not initialized");
+    throw new Error('MiGPT runtime not initialized');
   }
   return runtime;
 }

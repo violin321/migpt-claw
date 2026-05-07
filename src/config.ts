@@ -1,6 +1,6 @@
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { MiServiceConfig } from './service.js';
-import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk';
+import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/core';
 
 /**
  * 小米音箱 Channel 配置
@@ -128,6 +128,12 @@ export function resolveMiAccount(
     timeout: accountConfig.timeout ?? migptCfg?.timeout,
     devices: accountConfig.devices ?? migptCfg?.devices ?? [],
     speakerControl: accountConfig.speakerControl ?? migptCfg?.speakerControl,
+    systemPrompt: accountConfig.systemPrompt ?? migptCfg?.systemPrompt,
+    announceOnStart: accountConfig.announceOnStart ?? migptCfg?.announceOnStart,
+    startupMessage: accountConfig.startupMessage ?? migptCfg?.startupMessage,
+    acknowledgeOnReceive:
+      accountConfig.acknowledgeOnReceive ?? migptCfg?.acknowledgeOnReceive,
+    receiveMessage: accountConfig.receiveMessage ?? migptCfg?.receiveMessage,
   };
 
   // 检查是否已配置
@@ -282,10 +288,10 @@ export function deleteMiAccount(
 export function resolveMiAllowFrom(
   cfg: ExtendedOpenClawConfig,
   _accountId?: string,
-): string[] {
+  fallback?: Array<string | number>,
+): Array<string | number> {
   const migptCfg = cfg.channels?.migpt;
-  const allowFrom = migptCfg?.allowFrom ?? [];
-  return allowFrom.map((entry) => String(entry).trim()).filter(Boolean);
+  return migptCfg?.allowFrom ?? fallback ?? [];
 }
 
 /**

@@ -1,7 +1,8 @@
-// Type declarations for openclaw/plugin-sdk
+// Minimal compatibility declarations for OpenClaw 2026.5.4 plugin SDK subpaths.
+type MiAnyRecord = Record<string, any>;
+
 declare module 'openclaw/plugin-sdk' {
   export const DEFAULT_ACCOUNT_ID: string;
-
   export function emptyPluginConfigSchema(): any;
 
   export interface PluginRuntime {
@@ -10,33 +11,7 @@ declare module 'openclaw/plugin-sdk' {
         record: (opts: { channel: string; accountId: string; direction: 'inbound' | 'outbound' }) => void;
       };
       reply: {
-        finalizeInboundContext: (opts: {
-          Body: string;
-          BodyForAgent?: string;
-          RawBody?: string;
-          CommandBody?: string;
-          From: string;
-          To: string;
-          SessionKey: string;
-          AccountId: string;
-          ChatType: 'direct' | 'group';
-          SenderId: string;
-          SenderName?: string;
-          Provider: string;
-          Surface: string;
-          MessageSid: string;
-          Timestamp: number;
-          OriginatingChannel: string;
-          OriginatingTo: string;
-          CommandAuthorized?: boolean;
-          MediaPaths?: string[];
-          MediaPath?: string;
-          MediaTypes?: string[];
-          MediaType?: string;
-          MediaUrls?: string[];
-          MediaUrl?: string;
-          ImageMediaTypes?: string[];
-        }) => any;
+        finalizeInboundContext: (opts: MiAnyRecord) => any;
         dispatchReplyWithBufferedBlockDispatcher: (opts: {
           ctx: any;
           cfg: any;
@@ -47,32 +22,10 @@ declare module 'openclaw/plugin-sdk' {
         }) => Promise<void>;
         resolveEffectiveMessagesConfig: (cfg: any, agentId?: string) => any;
         resolveEnvelopeFormatOptions: (cfg: any) => any;
-        formatInboundEnvelope: (opts: {
-          Body: string;
-          BodyForAgent?: string;
-          From: string;
-          To: string;
-          SessionKey: string;
-          ChatType: 'direct' | 'group';
-          SenderId: string;
-          SenderName?: string;
-          Provider: string;
-          Surface: string;
-          MessageSid: string;
-          Timestamp: number;
-          OriginatingChannel: string;
-          envelopeOptions: any;
-        }) => string;
+        formatInboundEnvelope: (opts: MiAnyRecord) => string;
       };
       routing: {
-        resolveAgentRoute: (opts: {
-          from: string;
-          to: string;
-          sessionKey: string;
-          accountId: string;
-          chatType: 'direct' | 'group';
-          provider: string;
-        }) => any;
+        resolveAgentRoute: (opts: MiAnyRecord) => any;
       };
     };
   }
@@ -92,7 +45,31 @@ declare module 'openclaw/plugin-sdk' {
     registerProvider(provider: any): void;
     on(event: string, handler: any, options?: any): void;
   }
-  
+}
+
+declare module 'openclaw/plugin-sdk/core' {
+  export { DEFAULT_ACCOUNT_ID, PluginRuntime, OpenClawPluginApi } from 'openclaw/plugin-sdk';
+
+  export interface OpenClawConfig {
+    channels?: Record<string, any>;
+  }
+
+  export interface ChannelOnboardingAdapter {
+    selectAccount?: (opts: any) => Promise<any>;
+    promptCredentials?: () => Promise<any>;
+    validateCredentials?: (opts: any) => Promise<any>;
+    applyConfig?: (opts: any) => any;
+  }
+
+  export interface ChannelOutboundAdapter {
+    deliveryMode: string;
+    chunker?: (text: string, limit: number) => string[];
+    chunkerMode?: string;
+    textChunkLimit?: number;
+    sendText: (opts: { to: string; text: string; accountId?: string; cfg: any; replyToId?: string }) => Promise<any>;
+    sendMedia?: (opts: { to: string; text?: string; mediaUrl: string; accountId?: string; cfg: any; replyToId?: string }) => Promise<any>;
+  }
+
   export interface ChannelPlugin<T = any> {
     id: string;
     meta: {
@@ -125,8 +102,8 @@ declare module 'openclaw/plugin-sdk' {
       deleteAccount: (opts: { cfg: any; accountId: string }) => any;
       isConfigured: (account: T) => boolean;
       describeAccount: (account: T) => any;
-      resolveAllowFrom?: (opts: { cfg: any; accountId?: string }) => string[];
-      formatAllowFrom?: (opts: { allowFrom: Array<string | number> }) => string[];
+      resolveAllowFrom?: (opts: { cfg: any; accountId?: string }) => Array<string | number>;
+      formatAllowFrom?: (opts: { cfg: any; accountId?: string; allowFrom: Array<string | number> }) => string[];
     };
     setup?: {
       resolveAccountId?: (opts: any) => string;
@@ -135,9 +112,9 @@ declare module 'openclaw/plugin-sdk' {
       applyAccountName?: (opts: any) => any;
     };
     messaging?: {
-      normalizeTarget: (target: string) => { ok: boolean; to?: string; error?: string };
+      normalizeTarget: (target: string) => any;
       targetResolver: {
-        looksLikeId: (id: string) => boolean;
+        looksLikeId: (...args: any[]) => boolean;
         hint: string;
       };
     };
@@ -146,36 +123,37 @@ declare module 'openclaw/plugin-sdk' {
       startAccount: (ctx: any) => Promise<void>;
       logoutAccount?: (opts: any) => Promise<any>;
     };
-    status?: {
-      defaultRuntime: any;
-      buildChannelSummary?: (opts: any) => any;
-      probeAccount?: (opts: any) => Promise<any>;
-      buildAccountSnapshot?: (opts: any) => any;
-    };
+    status?: MiAnyRecord;
     pairing?: any;
     security?: any;
     groups?: any;
     agentPrompt?: any;
     directory?: any;
   }
-  
-  export interface ChannelOutboundAdapter {
-    deliveryMode: string;
-    chunker?: (text: string, limit: number) => string[];
-    chunkerMode?: string;
-    textChunkLimit?: number;
-    sendText: (opts: { to: string; text: string; accountId?: string; cfg: any; replyToId?: string }) => Promise<any>;
-    sendMedia?: (opts: { to: string; text?: string; mediaUrl: string; accountId?: string; cfg: any; replyToId?: string }) => Promise<any>;
+}
+
+declare module 'openclaw/plugin-sdk/setup' {
+  export interface ChannelSetupWizardAdapter {
+    channel: string;
+    getStatus: (...args: any[]) => Promise<any>;
+    configure: (...args: any[]) => Promise<any>;
   }
-  
-  export interface ChannelOnboardingAdapter {
-    selectAccount?: (opts: any) => Promise<any>;
-    promptCredentials?: () => Promise<any>;
-    validateCredentials?: (opts: any) => Promise<any>;
-    applyConfig?: (opts: any) => any;
-  }
-  
-  export interface OpenClawConfig {
-    channels?: Record<string, any>;
+}
+
+declare module 'openclaw/plugin-sdk/channel-inbound' {
+  export function formatInboundEnvelope(...args: any[]): any;
+  export function resolveEnvelopeFormatOptions(...args: any[]): any;
+}
+
+declare module 'openclaw/plugin-sdk/reply-runtime' {
+  export function dispatchReplyWithBufferedBlockDispatcher(...args: any[]): Promise<any>;
+  export function finalizeInboundContext(...args: any[]): any;
+}
+
+declare module 'openclaw/plugin-sdk/outbound-runtime' {
+  export interface OutboundDeliveryResult {
+    channel: string;
+    messageId: string;
+    timestamp: number;
   }
 }
