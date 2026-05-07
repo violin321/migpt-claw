@@ -106,6 +106,7 @@ openclaw plugins install ./migpt-claw-1.0.0.tgz
 - `startupMessage`：上线播报文案
 - `acknowledgeOnReceive`：收到消息时是否回复提示
 - `receiveMessage`：收到消息回复文案
+- `wakeWord`：唤醒词；仅包含此词的语音才转发给 OpenClaw，留空则处理所有消息
 - `speakerControl`：音箱控制方式（`mina` 或 `miot`，默认 `mina`）
 
 **配置建议（受控测试）**：
@@ -113,6 +114,40 @@ openclaw plugins install ./migpt-claw-1.0.0.tgz
 - `devices` 必须使用米家 App 中显示的真实设备名，例如 `客厅`，不要使用自己临时想的昵称。
 - 建议先设置 `announceOnStart: false`，避免 Gateway/插件初始化时突然播报上线文案。
 - 建议先设置 `acknowledgeOnReceive: false`，避免 inbound 测试时多播提示语。
+- 建议显式配置 `wakeWord`，避免把普通小爱对话也转进 OpenClaw。
+
+### 唤醒词配置与行为
+
+推荐在 `channels.migpt` 下配置一个专用唤醒词，例如“小龙虾”：
+
+```json
+{
+  "channels": {
+    "migpt": {
+      "enabled": true,
+      "devices": ["客厅音箱"],
+      "wakeWord": "小龙虾"
+    }
+  }
+}
+```
+
+当前行为：
+- 只有用户语音**包含** `wakeWord` 时，消息才会转发给 OpenClaw。
+- 如果语音**以唤醒词开头**，会先去掉该前缀，再把剩余正文发给 OpenClaw。
+- 如果语音在**中间包含唤醒词**，也会命中，并在转发前去掉该词。
+- 如果整句只有唤醒词、没有实际正文，例如“**小龙虾**”，则本次消息会被忽略，不触发 OpenClaw。
+- **不带唤醒词**的普通小爱对话，仍由小爱原生处理，不进入 OpenClaw。
+
+示例：
+- “**小龙虾**，帮我问今天有什么安排” → 转给 OpenClaw，正文为“帮我问今天有什么安排”
+- “帮我问一下**小龙虾**今天有什么安排” → 转给 OpenClaw，唤醒词会被剔除
+- “小爱同学，今天天气怎么样” → 不转给 OpenClaw，仍由小爱原生回答
+
+注意：
+- inbound 识别是基于**轮询小爱历史消息**实现，不是系统级抢占式拦截。
+- 因此响应延迟会受 `heartbeat`（轮询间隔）影响；轮询越短，通常越快，但**不承诺零延迟**。
+- 留空 `wakeWord` 虽然兼容旧行为，但会让更多普通对话进入 OpenClaw，一般不推荐。
 
 
 ### 音箱控制方式说明
@@ -193,13 +228,27 @@ openclaw message send \
 
 ### 小爱语音对话 OpenClaw
 
-设计目标是继续使用小爱原生唤醒词，例如：
+设计目标是继续使用小爱原生唤醒词，再配合本插件配置的业务唤醒词，例如：
 
-> 小爱同学，帮我问 OpenClaw 今天有什么安排
+> 小爱同学，小龙虾，帮我问今天有什么安排
 
-插件会轮询小爱对话记录，并把符合条件的新 query 转给 OpenClaw，再将 OpenClaw 回复播回音箱。
+插件会轮询小爱对话记录，并把**命中 `wakeWord`** 的新 query 转给 OpenClaw，再将 OpenClaw 回复播回音箱。
 
 当前此 inbound 链路尚未充分验证；建议先在单设备、短句、低风险场景下测试。
+
+### 打断原生回答 / 避免双声道重复播报
+
+为减少“小爱先答一遍，OpenClaw 再答一遍”的双声道问题，插件在准备播放 `acknowledgeOnReceive` 提示或 OpenClaw 回播前，会先尽力执行一次：
+
+- `abortXiaoAI()`
+- `stop()`
+
+这一步是 **best-effort**：目标是更早打断小爱原生回答，减少重复播报，但是否完全静音、打断速度多快，仍会受设备型号、当前播放状态和轮询时机影响。
+
+如果你希望尽量减少抢话和重叠，建议：
+- 配置明确的 `wakeWord`
+- 将 `heartbeat` 控制在合理范围（例如 1000ms）
+- 初期先关闭 `acknowledgeOnReceive`，等链路稳定后再决定是否开启
 
 ### 智能家居控制
 

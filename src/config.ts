@@ -40,6 +40,8 @@ export interface MiGPTConfig extends MiServiceConfig {
   acknowledgeOnReceive?: boolean;
   /** 收到消息回复文案 */
   receiveMessage?: string;
+  /** 唤醒词。仅包含此词的语音才转发给 OpenClaw */
+  wakeWord?: string;
 }
 
 /**
@@ -62,6 +64,8 @@ export interface MiGPTAccountConfig extends MiServiceConfig {
   acknowledgeOnReceive?: boolean;
   /** 收到消息回复文案 */
   receiveMessage?: string;
+  /** 唤醒词。仅包含此词的语音才转发给 OpenClaw */
+  wakeWord?: string;
 }
 
 /**
@@ -134,6 +138,7 @@ export function resolveMiAccount(
     acknowledgeOnReceive:
       accountConfig.acknowledgeOnReceive ?? migptCfg?.acknowledgeOnReceive,
     receiveMessage: accountConfig.receiveMessage ?? migptCfg?.receiveMessage,
+    wakeWord: accountConfig.wakeWord ?? migptCfg?.wakeWord,
   };
 
   // 检查是否已配置

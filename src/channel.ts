@@ -204,6 +204,33 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
             if (msg) {
               log?.info(`[migpt:${account.accountId}] Received message from ${deviceName}: ${msg.text.slice(0, 50)}...`);
 
+              // 唤醒词过滤
+              const wakeWord = account.config.wakeWord ?? cfg.channels?.migpt?.wakeWord;
+              if (wakeWord) {
+                const trimmed = msg.text.trim();
+                if (!trimmed.includes(wakeWord)) {
+                  continue;
+                }
+
+                const cleaned = trimmed.startsWith(wakeWord)
+                  ? trimmed.slice(wakeWord.length).trim()
+                  : trimmed.replace(wakeWord, '').trim();
+
+                if (!cleaned) {
+                  continue;
+                }
+
+                msg.text = cleaned;
+              }
+
+              // 无论 acknowledgeOnReceive 如何，OpenClaw 回播前先打断设备上正在播的内容
+              try {
+                MiSpeaker.abortXiaoAI();
+                MiSpeaker.stop();
+              } catch {
+                // best-effort
+              }
+
               const acknowledgeOnReceive = account.config.acknowledgeOnReceive
                 ?? cfg.channels?.migpt?.acknowledgeOnReceive ?? false;
 
@@ -213,8 +240,6 @@ export const miGPTPlugin: ChannelPlugin<ResolvedMiAccount> = {
                   ?? '收到，处理中';
 
                 try {
-                  MiSpeaker.abortXiaoAI();
-                  MiSpeaker.stop();
                   MiSpeaker.play({ text: receiveMessage });
                 } catch (err) {
                   log?.error(`[migpt:${account.accountId}] Failed to play receive message: ${err}`);

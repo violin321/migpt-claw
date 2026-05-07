@@ -67,6 +67,10 @@
         "type": "string",
         "description": "收到消息回复文案",
         "default": "收到，处理中"
+      },
+      "wakeWord": {
+        "type": "string",
+        "description": "唤醒词。只有用户语音包含此词时才转发给 OpenClaw，其他消息由小爱自己处理。留空则处理所有消息。"
       }
     }
   },
@@ -116,6 +120,10 @@
     "receiveMessage": {
       "label": "回复文案",
       "placeholder": "收到，处理中"
+    },
+    "wakeWord": {
+      "label": "唤醒词",
+      "placeholder": "例如：小龙虾"
     }
   },
   "channelConfigs": {
@@ -180,6 +188,10 @@
           },
           "receiveMessage": {
             "type": "string"
+          },
+          "wakeWord": {
+            "type": "string",
+            "description": "唤醒词。只有用户语音包含此词时才转发给 OpenClaw，其他消息由小爱自己处理。留空则处理所有消息。"
           }
         },
         "additionalProperties": false
