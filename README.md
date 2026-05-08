@@ -4,12 +4,12 @@
 
 ## 中文
 
-`migpt-claw` 是一个面向 OpenClaw 的小米小爱音箱 Channel 插件实验实现，用来把 OpenClaw 的文本结果转成适合音箱场景的语音播报，并通过小米侧会话链路轮询用户对话。
+`migpt-claw` 是一个面向 OpenClaw 的小米小爱音箱 Channel 插件实验实现,用来把 OpenClaw 的文本结果转成适合音箱场景的语音播报,并通过小米侧会话链路轮询用户对话。
 
-它的目标是把 **OpenClaw Channel runtime**、**小米账号 / 设备访问链路**、以及**音箱场景下的播报约束**接起来，方便开发者做本地实验、兼容性验证和二次实现。
+它的目标是把 **OpenClaw Channel runtime**、**小米账号 / 设备访问链路**、以及**音箱场景下的播报约束**接起来,方便开发者做本地实验、兼容性验证和二次实现。
 
 > [!IMPORTANT]
-> 本项目仍应视为实验性集成，不应被描述为：
+> 本项目仍应视为实验性集成,不应被描述为:
 > - 小爱官方替代品
 > - 稳定低延迟语音助手
 > - 已完整验证的可靠打断方案
@@ -18,7 +18,7 @@
 
 ### 项目定位
 
-当前仓库主要覆盖以下方向：
+当前仓库主要覆盖以下方向:
 
 - 以 OpenClaw Channel 插件形式接入小爱音箱
 - 通过 **MiNA / MIoT** 控制音箱播报与部分设备行为
@@ -26,7 +26,7 @@
 - 为音箱场景补充更适合 TTS 的输出约束
 - 提供一个仓库内技能 `skills/migpt-volume` 作为相关能力示例
 
-它更适合被理解为：**MiGPT / MiGPT Next 思路在 OpenClaw Plugin / Channel runtime 上的一次接线与兼容探索**。
+它更适合被理解为:**MiGPT / MiGPT Next 思路在 OpenClaw Plugin / Channel runtime 上的一次接线与兼容探索**。
 
 ### 当前能力概览
 
@@ -36,31 +36,64 @@
 - **MiNA / MIoT 双控制路径**：不同型号可尝试不同控制方式
 - **启动 / 收到消息提示**：支持基础上线播报和接收提示
 - **音量相关 skill**：内置 `skills/migpt-volume`
+- **唤醒词过滤**：通过 `wakeWord` 配置，仅包含指定词的语音才转发给 OpenClaw
+- **TTS 语速与音量控制**：支持 `ttsSpeed`（0.5–2.0）和 `volume`（6–100）调节
+- **设备访问策略**：支持 `pairing` / `allowlist` / `open` 三种设备策略
+
+### 测试环境
+
+> [!NOTE]
+> 以下为已验证的运行环境，**不是硬依赖声明**。你的环境可能同样适用，但请自行验证。
+>
+> - **OpenClaw**: 2026.5.4
+> - **Node.js**: v24.15.0
+> - **操作系统**: Linux (Debian/Ubuntu x64)
+>
+> 插件本身不硬编码任何模型或 OpenClaw 版本。只要 OpenClaw Channel runtime 接口兼容，理论上可用其他模型和版本。
 
 ### 已知边界
 
-请在使用前先接受这些边界：
+请在使用前先接受这些边界:
 
-- **不是所有型号都验证过**：不同小爱音箱型号对 MiNA / MIoT 的支持存在差异
-- **打断能力不能夸大**：仓库内有相关占位与尝试，但不应宣称“可靠打断”已被系统性验证
-- **会话轮询依赖小米侧接口行为**：conversation history 链路可能受接口变化、账号状态、风控或地区差异影响
-- **延迟表现不保证稳定**：分块播报可改善体感，但不能承诺稳定低延迟
-- **自动化工作流仅能谨慎描述**：若你在外部流程里接了 `xiaomi-mimo-tts`、`mimo-tts-feishu-audio` 或 MiMo warm brief 脚本，它们应视为相关外部工作流 / 待验证链路，不应写成仓库已确认内建
-- **OpenClaw 兼容性需自行验证**：不同版本的 OpenClaw SDK / runtime 可能存在接口代差
+- **不是所有型号都验证过**:不同小爱音箱型号对 MiNA / MIoT 的支持存在差异
+- **打断能力不能夸大**:仓库内有相关占位与尝试,但不应宣称"可靠打断"已被系统性验证
+- **会话轮询依赖小米侧接口行为**:conversation history 链路可能受接口变化、账号状态、风控或地区差异影响
+- **延迟表现不保证稳定**:分块播报可改善体感,但不能承诺稳定低延迟
+- **自动化工作流仅能谨慎描述**:若你在外部流程里接了 `xiaomi-mimo-tts`、`mimo-tts-feishu-audio` 或 MiMo warm brief 脚本,它们应视为相关外部工作流 / 待验证链路,不应写成仓库已确认内建
+- **OpenClaw 兼容性需自行验证**:不同版本的 OpenClaw SDK / runtime 可能存在接口代差
 
 ### 快速开始
 
 #### 1. 安装插件
 
+**方式 A：从 tgz 安装（推荐本地实验）**
+
 ```bash
-openclaw plugins install ./migpt-claw-1.0.0.tgz
+openclaw plugins install ./migpt-claw-1.0.1.tgz
 ```
+
+**方式 B：从 GitHub Release 安装**
+
+前往 [GitHub Releases](https://github.com/violin321/migpt-claw/releases) 下载对应版本的 `.tgz` 文件，然后：
+
+```bash
+openclaw plugins install ./migpt-claw-<version>.tgz
+```
+
+> [!TIP]
+> GitHub Releases 页面提供版本化归档与变更说明，适合需要追溯版本历史的场景。
+
+**方式 C：ClawHub 安装（技能）**
+
+仓库内包含一个 `skills/migpt-volume` 技能。该技能目前以 in-repo 方式随插件分发，尚未发布到 ClawHub。
+
+> ClawHub 发布链接待确认后补充。当前请通过插件安装（方式 A/B）一并获取技能。
 
 #### 2. 配置账号与设备
 
 编辑 `~/.openclaw/openclaw.json`。
 
-下面示例只展示字段结构与占位符，**不要**把真实密码、token、serviceToken、ssecurity 等敏感值提交到仓库。
+下面示例只展示字段结构与占位符,**不要**把真实密码、token、serviceToken、ssecurity 等敏感值提交到仓库。
 
 ```json
 {
@@ -73,103 +106,103 @@ openclaw plugins install ./migpt-claw-1.0.0.tgz
       "devices": ["客厅音箱"],
       "speakerControl": "mina",
       "announceOnStart": true,
-      "startupMessage": "您的小龙虾已上线，随时为您服务",
+      "startupMessage": "您的小龙虾已上线,随时为您服务",
       "acknowledgeOnReceive": true,
-      "receiveMessage": "收到，处理中"
+      "receiveMessage": "收到,处理中"
     }
   }
 }
 ```
 
-字段说明：
+字段说明:
 
-- `userId`：小米 ID（数字）
-- `password`：小米账号密码
-- `passToken`：登录辅助凭证；字段可以出现，但请勿泄露真实值
-- `devices`：目标小爱音箱名称列表，需与米家 App 中名称一致
-- `speakerControl`：`mina` 或 `miot`
-- `announceOnStart`：是否启动播报
-- `startupMessage`：启动播报文案
-- `acknowledgeOnReceive`：收到消息时是否给出提示
-- `receiveMessage`：接收提示文案
+- `userId`:小米 ID(数字)
+- `password`:小米账号密码
+- `passToken`:登录辅助凭证;字段可以出现,但请勿泄露真实值
+- `devices`:目标小爱音箱名称列表,需与米家 App 中名称一致
+- `speakerControl`:`mina` 或 `miot`
+- `announceOnStart`:是否启动播报
+- `startupMessage`:启动播报文案
+- `acknowledgeOnReceive`:收到消息时是否给出提示
+- `receiveMessage`:接收提示文案
 
 #### 3. 选择音箱控制方式
 
-`speakerControl` 用于指定控制路径：
+`speakerControl` 用于指定控制路径:
 
-- `mina`：默认路径，适合多数音箱型号
-- `miot`：部分型号或场景下可尝试的替代路径
+- `mina`:默认路径,适合多数音箱型号
+- `miot`:部分型号或场景下可尝试的替代路径
 
-已知可能更需要 `miot` 的型号包括：
+已知可能更需要 `miot` 的型号包括:
 
-- LX04（小爱音箱 Pro）
-- X10A（小爱音箱 X10）
-- L05B / L05C（小爱音箱 Play 增强版）
+- LX04(小爱音箱 Pro)
+- X10A(小爱音箱 X10)
+- L05B / L05C(小爱音箱 Play 增强版)
 
-但这不是完整兼容性结论。更完整的设备经验可参考上游文档，例如 MiGPT 的兼容性说明：
+但这不是完整兼容性结论。更完整的设备经验可参考上游文档,例如 MiGPT 的兼容性说明:
 <https://github.com/idootop/mi-gpt/blob/main/docs/compatibility.md>
 
 #### 4. 启动 / 重载 OpenClaw
 
-按你当前的 OpenClaw 环境方式加载插件。若你在本地开发，通常至少需要：
+按你当前的 OpenClaw 环境方式加载插件。若你在本地开发,通常至少需要:
 
 ```bash
 npm run build
 ```
 
-> `openclaw gateway restart` 属于环境操作，不应从外部 README 直接推断为所有场景的唯一步骤；请按你的本地 OpenClaw 版本与运维方式执行。
+> `openclaw gateway restart` 属于环境操作,不应从外部 README 直接推断为所有场景的唯一步骤;请按你的本地 OpenClaw 版本与运维方式执行。
 
 ### 设备名称要求
 
-设备名称必须与米家 App 中显示的名称一致，包括：
+设备名称必须与米家 App 中显示的名称一致,包括:
 
 - 大小写
 - 空格
 - 标点
-- “音响 / 音箱”等容易混淆的写法
+- "音响 / 音箱"等容易混淆的写法
 
-如果设备找不到，可临时打开调试日志，查看实际设备列表后再修正配置。
+如果设备找不到,可临时打开调试日志,查看实际设备列表后再修正配置。
 
 ### 音箱场景下的输出约束
 
 本项目假设语音播报并不适合承载所有内容。
 
-更适合播报的内容：
+更适合播报的内容:
 
 - 简短确认
 - 短问答
 - 状态提醒
 - 简短摘要
 
-不适合直接播报的内容：
+不适合直接播报的内容:
 
 - 代码
 - 长篇文档
 - 大块结构化数据
 - 多链接、多媒体集合
 
-因此仓库里会把“小爱音箱播报”视为一个**受约束的输出渠道**，而不是通用完整 UI。
+因此仓库里会把"小爱音箱播报"视为一个**受约束的输出渠道**,而不是通用完整 UI。
 
 ### 故障排查
 
 #### 登录失败 / 需要验证码
 
-常见现象：
+常见现象:
 
 - 登录态失效
 - 需要验证码
 - 配置存在 `passToken` 字段但仍无法直接通过
 
-建议排查：
+建议排查:
 
 1. 重新确认 `userId` / `password` 是否正确
-2. 确认 `passToken` 是否只是辅助凭证，而不是被误认为密码替代品
-3. 如本地缓存登录态异常，检查 `.mi.json` 相关缓存后再重试
-4. 注意 `serviceToken`、`ssecurity` 等字段名可以出现在代码 / 配置结构中，但不要把真实值写入文档或 issue
+2. 确认 `passToken` 是否只是辅助凭证,而不是被误认为密码替代品
+3. 如本地缓存登录态异常,检查 `.mi.json` 相关缓存后再重试
+4. 注意 `serviceToken`、`ssecurity` 等字段名可以出现在代码 / 配置结构中,但不要把真实值写入文档或 issue
 
 #### 设备未找到
 
-建议排查：
+建议排查:
 
 1. 核对设备名称是否与米家 App 完全一致
 2. 尝试切换 `speakerControl: "mina"` / `"miot"`
@@ -177,7 +210,7 @@ npm run build
 
 #### 会话轮询失败
 
-若 `getConversations` 相关链路异常，通常需要考虑：
+若 `getConversations` 相关链路异常,通常需要考虑:
 
 1. 网络状态
 2. 小米接口行为变化
@@ -226,7 +259,7 @@ npm pack --dry-run
 
 ### Credits
 
-感谢以下项目与实现思路提供参考：
+感谢以下项目与实现思路提供参考:
 
 - **[MiGPT](https://github.com/idootop/mi-gpt)**
 - **[MiGPT Next](https://github.com/idootop/migpt-next)**
@@ -235,26 +268,29 @@ npm pack --dry-run
 
 ### Sources / Architecture Notes
 
-本仓库 README 所描述的能力边界，基于以下关联链路理解整理：
+本仓库 README 所描述的能力边界,基于以下关联链路理解整理:
 
-- **MiNA / MIoT / XiaoAI conversation history chain**：对应音箱控制、设备访问、对话轮询链路
-- **in-repo skill: `skills/migpt-volume`**：仓库内与音箱场景直接相关的 skill 示例
-- **MiMo warm brief scripts**：可视为相关思路或周边脚本链路，但不应默认视为本仓库已内建能力
-- **Related external workflow / To verify**：`xiaomi-mimo-tts`、`mimo-tts-feishu-audio`
+- **MiNA / MIoT / XiaoAI conversation history chain**:对应音箱控制、设备访问、对话轮询链路
+- **in-repo skill: `skills/migpt-volume`**:仓库内与音箱场景直接相关的 skill 示例
+- **MiMo warm brief scripts**:可视为相关思路或周边脚本链路,但不应默认视为本仓库已内建能力
+- **`xiaomi-mimo-tts` (ClawHub)**: 已确认 ClawHub 页面为 <https://clawhub.ai/jazzqi/xiaomi-mimo-tts>
+- **`mimo-tts-feishu-audio`**: 当前仅确认存在本地集成 / 仓库外工作流，尚未确认对应 ClawHub 上游链接；若后续确认再补
 
-如果你在文档、演示或二次分发中引用这些链路，请保留“相关 / 待验证”边界，不要把它们写成仓库已经正式确认或完整集成的功能。
+如果你在文档、演示或二次分发中引用这些链路,请保留"相关 / 待验证"边界,不要把它们写成仓库已经正式确认或完整集成的功能。
 
 ### Skill Dependencies
 
-当前仓库中可以明确看到的 skill 依赖 / 关联只有：
+当前仓库中可以明确看到的 skill 依赖 / 关联只有:
 
 - `skills/migpt-volume`
+- `xiaomi-mimo-tts`（外部相关 skill，ClawHub: <https://clawhub.ai/jazzqi/xiaomi-mimo-tts>）
+- `mimo-tts-feishu-audio`（本地集成 / 仓库外工作流，暂未确认 ClawHub 上游链接）
 
-除此之外，若你在自己的 OpenClaw 环境里组合其他 skills、agents 或自动化流程，那属于你的部署层编排，不应默认归因到本仓库本身。
+除此之外,若你在自己的 OpenClaw 环境里组合其他 skills、agents 或自动化流程,那属于你的部署层编排,不应默认归因到本仓库本身。
 
 ### AI-Assisted Development
 
-现有仓库历史中包含 AI 辅助开发痕迹；这属于实现过程信息，不构成对结果稳定性、兼容性或官方支持的额外承诺。
+本项目近期修改与 README 整理使用 GPT-5.5 辅助完成，最终内容以仓库代码和人工审核为准。
 
 ### License
 
@@ -268,7 +304,22 @@ MIT
 - 本项目与小米公司无官方关联，也不构成任何官方支持或背书
 - 使用本项目可能带来账号、设备、接口兼容性与风控风险
 - 建议仅使用测试环境、测试账号或非关键设备进行验证
-- 项目按“原样”提供，不承诺可用性、稳定性、连续性或适配范围
+- 项目按"原样"提供，不承诺可用性、稳定性、连续性或适配范围
+
+### OpenClaw 版本兼容
+
+- **最低 Node.js**: 18（`package.json` engines 字段约束）
+- **OpenClaw SDK**: 依赖 `openclaw/plugin-sdk` 的 Channel runtime 接口
+- **已验证版本**: OpenClaw 2026.5.4
+- **其他版本**: 未逐一测试；若 Channel runtime 接口无 breaking change，通常可兼容
+
+### Skill: `skills/migpt-volume`
+
+这是仓库内唯一的 bundled skill，提供音箱场景下的提示词定制指南（`systemPrompt` 配置说明、播报约束、分流策略等）。
+
+- **路径**: `skills/migpt-volume`
+- **ClawHub**: 尚未发布，待确认后补充链接
+- **安装**: 随插件 tgz 一并分发，无需单独安装
 
 ---
 
@@ -306,6 +357,20 @@ A practical way to view it is: **an OpenClaw-side wiring and compatibility explo
 - **Dual control paths through MiNA and MIoT**
 - **Startup / receive acknowledgements**
 - **A bundled volume-related skill** at `skills/migpt-volume`
+- **Wake word filtering** via `wakeWord` config — only voice containing the keyword is forwarded to OpenClaw
+- **TTS speed and volume control** via `ttsSpeed` (0.5–2.0) and `volume` (6–100)
+- **Device access policies**: `pairing` / `allowlist` / `open` strategies
+
+### Tested Environment
+
+> [!NOTE]
+> The following is a verified runtime environment, **not a hard dependency declaration**. Your setup may also work, but please validate on your own.
+>
+> - **OpenClaw**: 2026.5.4
+> - **Node.js**: v24.15.0
+> - **OS**: Linux (Debian/Ubuntu x64)
+>
+> The plugin itself does not hard-code any model or OpenClaw version. As long as the OpenClaw Channel runtime interface is compatible, other models and versions should theoretically work.
 
 ### Known limits
 
@@ -322,9 +387,28 @@ Please keep these limits in mind:
 
 #### 1. Install the plugin
 
+**Option A: Install from tgz (recommended for local experiments)**
+
 ```bash
-openclaw plugins install ./migpt-claw-1.0.0.tgz
+openclaw plugins install ./migpt-claw-1.0.1.tgz
 ```
+
+**Option B: Install from GitHub Release**
+
+Go to [GitHub Releases](https://github.com/violin321/migpt-claw/releases), download the `.tgz` for the desired version, then:
+
+```bash
+openclaw plugins install ./migpt-claw-<version>.tgz
+```
+
+> [!TIP]
+> GitHub Releases provide versioned archives with changelogs, suitable for scenarios that require version history tracking.
+
+**Option C: ClawHub (skill)**
+
+The repo ships an in-repo skill at `skills/migpt-volume`. It is currently distributed with the plugin tgz and has not yet been published to ClawHub.
+
+> ClawHub listing link will be added once published. For now, install via Option A/B to get the skill bundled with the plugin.
 
 #### 2. Configure account and devices
 
@@ -510,21 +594,27 @@ The boundaries described in this README are grounded in the following related ch
 - **MiNA / MIoT / XiaoAI conversation history chain** for speaker control, device access, and conversation polling
 - **in-repo skill: `skills/migpt-volume`** as the clearest bundled skill dependency/example
 - **MiMo warm brief scripts** as related ideas or adjacent scripts, not default built-in capabilities
-- **Related external workflow / To verify**: `xiaomi-mimo-tts`, `mimo-tts-feishu-audio`
+- **`xiaomi-mimo-tts` (ClawHub)**: confirmed page <https://clawhub.ai/jazzqi/xiaomi-mimo-tts>
+- **`mimo-tts-feishu-audio`**: currently only confirmed as a local integration / out-of-repo workflow; its ClawHub upstream link is not confirmed yet and should only be added after verification
 
-If you reference these in docs, demos, or downstream packaging, keep the “related / to verify” boundary explicit instead of presenting them as confirmed first-class features of this repository.
+If you reference these in docs, demos, or downstream packaging, keep the "related / to verify" boundary explicit instead of presenting them as confirmed first-class features of this repository.
 
 ### Skill Dependencies
 
-The only clearly visible skill dependency / association inside this repository is:
+The only clearly visible bundled skill inside this repository is:
 
 - `skills/migpt-volume`
+
+Related external workflow references used around this repo:
+
+- `xiaomi-mimo-tts` (ClawHub: <https://clawhub.ai/jazzqi/xiaomi-mimo-tts>)
+- `mimo-tts-feishu-audio` (local integration / out-of-repo workflow; ClawHub upstream link not yet confirmed)
 
 Anything else you compose in your own OpenClaw deployment belongs to your environment-level orchestration, not this repo by default.
 
 ### AI-Assisted Development
 
-Repository history includes AI-assisted implementation traces. That is process metadata, not an extra promise of stability, compatibility, or official support.
+Recent changes in this project and this README cleanup were completed with GPT-5.5 assistance. Final content should be judged by the repository code and human review.
 
 ### License
 
@@ -538,7 +628,22 @@ This project is intended for learning, research, and personal experimentation.
 - This project is not officially affiliated with Xiaomi and does not imply official support
 - It may carry account, device, API compatibility, and risk-control risks
 - Prefer test environments, test accounts, and non-critical devices
-- The project is provided on an “as is” basis, with no guarantee of availability, stability, continuity, or device coverage
+- The project is provided on an "as is" basis, with no guarantee of availability, stability, continuity, or device coverage
+
+### OpenClaw Version Compatibility
+
+- **Minimum Node.js**: 18 (`package.json` engines constraint)
+- **OpenClaw SDK**: depends on `openclaw/plugin-sdk` Channel runtime interface
+- **Verified version**: OpenClaw 2026.5.4
+- **Other versions**: not exhaustively tested; should work if Channel runtime interface has no breaking changes
+
+### Skill: `skills/migpt-volume`
+
+This is the only bundled skill in the repo. It provides a prompt customization guide for speaker scenarios (`systemPrompt` config, playback constraints, content routing strategies, etc.).
+
+- **Path**: `skills/migpt-volume`
+- **ClawHub**: not yet published; link to be added once available
+- **Installation**: bundled with the plugin tgz; no separate install needed
 
 ## Star History
 

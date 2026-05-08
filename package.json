@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "migpt-claw",
   "description": "小米小爱音箱 OpenClaw Channel 插件",
   "keywords": [
@@ -21,6 +21,7 @@
     "dist",
     "src",
     "scripts",
+    "skills",
     "index.ts",
     "openclaw.plugin.json",
     "tsconfig.json"
@@ -63,6 +64,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/leon/migpt-claw.git"
+    "url": "git+https://github.com/violin321/migpt-claw.git"
   }
 }
